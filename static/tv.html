@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Display board — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  :root { --night: #0E0E0C; --tile: #1C1B18; --tile-2: #24231F; --chalk: #F1ECE0; --dim: #8D877A; --line-n: #2C2A25; }
+  html, body { background: var(--night); color: var(--chalk); }
+  body { overflow: hidden; }
+  .tv { display: grid; grid-template-rows: auto 1fr; height: 100vh; padding: 2.2vw 2.6vw; gap: 1.6vw; }
+  .tv-top { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line-n); padding-bottom: 1.2vw; }
+  .tv-top .logo { color: var(--chalk); font-size: 1.7vw; }
+  .tv-top .logo svg { width: 2vw; height: 1.3vw; }
+  .clock { font: 500 2.4vw var(--mono); font-variant-numeric: tabular-nums; color: var(--chalk); }
+  .tv-main { display: grid; grid-template-columns: 1fr 26vw; gap: 2.6vw; min-height: 0; }
+  .board-head, .brow { display: grid; grid-template-columns: 1fr auto; align-items: center; }
+  .board-head { font: 500 .95vw var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding-bottom: .8vw; border-bottom: 1px solid var(--line-n); }
+  .board { display: grid; grid-auto-rows: 1fr; min-height: 0; }
+  .brow { border-bottom: 1px solid var(--line-n); padding: 1vw 0; position: relative; }
+  .brow .lbl { font-family: var(--display); font-stretch: 80%; font-weight: 700; font-size: 3.2vw; color: var(--dim); letter-spacing: -0.01em; transition: color .3s; }
+  .brow .lbl small { display: block; font: 500 .9vw var(--mono); letter-spacing: .12em; text-transform: uppercase; margin-top: .3vw; }
+  .brow.hot .lbl { color: var(--signal); }
+  .brow.hot::before { content: ""; position: absolute; left: -2.6vw; top: 12%; bottom: 12%; width: .5vw; background: var(--signal); }
+  .flaps { display: flex; gap: .45vw; perspective: 600px; }
+  .flap { width: 6.2vw; height: 8.4vw; background: var(--tile); border-radius: .35vw; display: grid; place-items: center; position: relative;
+    font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 7vw; line-height: 1; color: var(--chalk); overflow: hidden; }
+  .flap::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: var(--night); }
+  .flap.sep { width: 2.6vw; background: transparent; color: var(--dim); }
+  .flap.sep::after { display: none; }
+  .flap.blank { color: #3a3833; }
+  .flip .flap { animation: flip .5s cubic-bezier(.3,1.4,.5,1) both; }
+  @keyframes flip { 0% { transform: rotateX(-95deg); filter: brightness(.4); } 100% { transform: rotateX(0); filter: none; } }
+  .side { display: grid; grid-template-rows: 1fr auto; gap: 1.6vw; min-height: 0; }
+  .next { border-top: 1px solid var(--line-n); }
+  .next-row { display: flex; justify-content: space-between; align-items: baseline; padding: .9vw 0; border-bottom: 1px solid var(--line-n); }
+  .next-row b { font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 2.8vw; line-height: 1; }
+  .next-row span { font: 500 1vw var(--mono); color: var(--dim); }
+  .scan { background: var(--chalk); color: var(--ink); padding: 1.4vw; display: grid; grid-template-columns: 9vw 1fr; gap: 1.2vw; align-items: center; }
+  .scan img { width: 100%; display: block; mix-blend-mode: multiply; }
+  .scan .t { font-family: var(--display); font-stretch: 80%; font-weight: 800; font-size: 2vw; line-height: 1; }
+  .scan .w { font: 500 .95vw var(--mono); margin-top: .8vw; color: var(--ink-2); }
+  .tv .eyebrow { color: var(--dim); font-size: .95vw; }
+  #start { position: fixed; inset: 0; background: var(--night); display: grid; place-items: center; z-index: 10; text-align: center; }
+  #start .logo { color: var(--chalk); font-size: 30px; justify-content: center; }
+  #start p { color: var(--dim); margin: 14px 0 28px; }
+  #start .btn { border-color: var(--chalk); color: var(--chalk); }
+  #start .btn:hover { background: var(--chalk); color: var(--night); }
+  @media (max-width: 800px) {
+    body { overflow: auto; }
+    .tv { height: auto; } .tv-main { grid-template-columns: 1fr; }
+    .flap { width: 15vw; height: 20vw; font-size: 16vw; } .flap.sep { width: 6vw; }
+    .brow .lbl { font-size: 6vw; } .brow .lbl small, .board-head { font-size: 2.6vw; }
+    .next-row b { font-size: 7vw; } .next-row span, .tv .eyebrow, .scan .w { font-size: 3vw; }
+    .scan { grid-template-columns: 28vw 1fr; } .scan .t { font-size: 6vw; }
+    .clock, .tv-top .logo { font-size: 5vw; } .tv-top .logo svg { width: 6vw; height: 4vw; }
+  }
+</style>
+</head>
+<body>
+<div id="start">
+  <div>
+    <div class="logo" data-logo>QueueLess</div>
+    <p>Display board for the waiting area. Sound and spoken announcements turn on when you start it.</p>
+    <button class="btn">Start the board <span class="arrow">→</span></button>
+  </div>
+</div>
+<div class="tv">
+  <div class="tv-top">
+    <span class="logo" data-logo>QueueLess</span>
+    <span class="eyebrow" id="live">Now serving</span>
+    <span class="clock" id="clock"></span>
+  </div>
+  <div class="tv-main">
+    <div style="display:grid;grid-template-rows:auto 1fr;min-height:0">
+      <div class="board-head"><span>Counter</span><span>Ticket</span></div>
+      <div class="board" id="board"></div>
+    </div>
+    <div class="side">
+      <div style="min-height:0;overflow:hidden">
+        <div class="eyebrow" style="padding-bottom:.8vw">Next in line</div>
+        <div class="next" id="next"></div>
+      </div>
+      <div class="scan">
+        <img src="/api/qr.svg" alt="QR code to join">
+        <div><div class="t">Scan to take a number</div><div class="w">Current wait <b id="wait"></b></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const last = {}, hotUntil = {}, flipNext = new Set();
+$('#start .btn').onclick = () => { unlockAudio(); chime(); $('#start').remove(); };
+const tickClock = () => $('#clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+tickClock(); setInterval(tickClock, 1000);
+
+function flaps(number) {
+  if (!number) return '<span class="flap blank">–</span><span class="flap sep"></span><span class="flap blank">–</span><span class="flap blank">–</span><span class="flap blank">–</span>';
+  return [...number].map((ch, i) => ch === '-' ? '<span class="flap sep">·</span>'
+    : `<span class="flap" style="animation-delay:${i * 70}ms">${esc(ch)}</span>`).join('');
+}
+
+let snap = null;
+function render() {
+  const now = Date.now();
+  $('#board').innerHTML = snap.counters.map(c => {
+    const hot = hotUntil[c.id] > now;
+    const flip = flipNext.has(c.id);
+    const sub = !c.is_open ? 'Closed' : c.current ? (c.current.status === 'serving' ? 'Serving' : 'Please come forward') : 'Available';
+    return `<div class="brow ${hot ? 'hot' : ''}"><div class="lbl">${esc(c.name)}<small>${sub}</small></div>
+      <div class="flaps ${flip ? 'flip' : ''}">${flaps(c.current?.number)}</div></div>`;
+  }).join('');
+  flipNext.clear();
+  $('#next').innerHTML = snap.waiting.slice(0, 6).map(t =>
+    `<div class="next-row"><b>${esc(t.number)}</b><span>${fmtRange(t.low_s, t.high_s)}</span></div>`).join('')
+    || '<div class="next-row"><span>No one waiting</span></div>';
+  $('#wait').textContent = snap.next_wait ? fmtRange(snap.next_wait.low_s, snap.next_wait.high_s) : 'paused';
+}
+
+async function refresh() {
+  snap = await api('/api/queue');
+  snap.counters.forEach(c => {
+    const n = c.current?.number || null;
+    if (n && last[c.id] !== undefined && last[c.id] !== n) { flipNext.add(c.id); hotUntil[c.id] = Date.now() + 10000; }
+    last[c.id] = n;
+  });
+  render();
+}
+setInterval(() => snap && render(), 2000);
+
+let pending;
+connectWS(msg => {
+  if (msg.type === 'call') {
+    chime();
+    setTimeout(() => speak(`Ticket ${spokenNumber(msg.number)}, please go to ${msg.counter}.`), 700);
+    if (msg.recall && snap) snap.counters.forEach(c => { if (c.current?.number === msg.number) { flipNext.add(c.id); hotUntil[c.id] = Date.now() + 10000; } });
+  }
+  clearTimeout(pending); pending = setTimeout(refresh, 80);
+}, ok => { $('#live').textContent = ok ? 'Now serving' : 'Reconnecting…'; });
+</script>
+</body>
+</html>

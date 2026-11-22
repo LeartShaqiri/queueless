@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  .head { display: flex; justify-content: space-between; align-items: end; gap: 20px; padding: 40px 0 24px; flex-wrap: wrap; }
+  .head h1 { font-size: 72px; }
+  .kpis { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--rule); }
+  .kpi { padding: 16px 18px 20px; }
+  .kpi + .kpi { border-left: 1px solid var(--rule); }
+  .kpi:first-child { padding-left: 0; }
+  .kpi .v { font-family: var(--display); font-stretch: 72%; font-weight: 800; font-size: 50px; line-height: 1; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  .kpi .v small { font-family: var(--mono); font-stretch: 100%; font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+  .kpi .h { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .insights { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 36px 0; border-bottom: 1px solid var(--rule); }
+  .ins-row { display: grid; grid-template-columns: 28px 1fr auto; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--rule); }
+  .ins-row .i { font: 500 12px var(--mono); color: var(--muted); }
+  .ins-row b { font-family: var(--display); font-stretch: 80%; font-size: 24px; font-weight: 750; }
+  .ins-row span:last-child { font: 500 13px var(--mono); color: var(--ink-2); }
+  .sec { padding: 36px 0 8px; }
+  .sec-h { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .sec-h h2 { font-family: var(--display); font-stretch: 85%; font-weight: 750; font-size: 26px; letter-spacing: -0.01em; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  .chart { height: 300px; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  @media (max-width: 1000px) { .kpis { grid-template-columns: repeat(3, 1fr); } .kpi:nth-child(4) { border-left: 0; padding-left: 0; } .kpi:nth-child(n+4) { border-top: 1px solid var(--rule); } }
+  @media (max-width: 760px) { .grid2, .insights { grid-template-columns: 1fr; gap: 24px; } .head h1 { font-size: 52px; }
+    .kpis { grid-template-columns: 1fr 1fr; } .kpi { padding-left: 0 !important; } .kpi:nth-child(odd) { border-left: 0; } .kpi:nth-child(even) { border-left: 1px solid var(--rule); padding-left: 16px !important; } .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="bar-in"><a class="logo" href="/" data-logo>QueueLess <span class="sub">Operations</span></a></div>
+    <div class="tools">
+      <button class="btn ghost sm" id="simHist">Simulate 14 days</button>
+      <button class="btn ghost sm" id="simRush">Add 10 walk-ins</button>
+      <button class="btn stop sm" id="reset">Reset data</button>
+    </div>
+  </header>
+
+  <div class="head">
+    <div><div class="eyebrow" id="date"></div><h1 class="display" style="margin-top:10px">Operations</h1></div>
+    <span class="live" id="live">Live</span>
+  </div>
+
+  <section id="empty" hidden style="padding:48px 0;border-top:1.5px solid var(--ink)">
+    <h2 class="display" style="font-size:40px;margin-bottom:12px">No traffic yet.</h2>
+    <p class="muted" style="max-width:520px">Issue a few real tickets, or use <b>Simulate 14 days</b> to generate two weeks of realistic arrivals: lunch peaks, busy Mondays and Fridays, a few no-shows.</p>
+  </section>
+
+  <div id="content" hidden>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="insights">
+      <div><div class="eyebrow" style="margin-bottom:6px">Peaks — staff up</div><div id="busiest"></div></div>
+      <div><div class="eyebrow" style="margin-bottom:6px">Lulls — breaks, or nudge customers here</div><div id="quietest"></div></div>
+    </div>
+
+    <section class="sec">
+      <div class="sec-h"><h2>When people arrive</h2><span class="eyebrow">Average arrivals per hour · last 28 days</span></div>
+      <div id="heat" class="chart" style="height:340px"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="sec">
+        <div class="sec-h"><h2>Wait by arrival hour</h2><span class="eyebrow">Minutes · longest highlighted</span></div>
+        <div id="byHour" class="chart"></div>
+      </section>
+      <section class="sec">
+        <div class="sec-h"><h2>Service mix</h2><span class="eyebrow">Tickets · last 28 days</span></div>
+        <div id="mix" class="chart"></div>
+      </section>
+    </div>
+
+    <div class="grid2" style="padding-bottom:56px">
+      <section class="sec">
+        <div class="sec-h"><h2>Customers served</h2><span class="eyebrow">Per day · last 14 days</span></div>
+        <div id="served" class="chart" style="height:260px"></div>
+      </section>
+      <section class="sec">
+        <div class="sec-h"><h2>Average wait</h2><span class="eyebrow">Minutes per day · last 14 days</span></div>
+        <div id="avgWait" class="chart" style="height:260px"></div>
+      </section>
+    </div>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const C = { ink: '#191713', ink2: '#47433B', muted: '#7C776B', rule: '#DAD4C6', paper: '#F2EFE7', signal: '#D8431F' };
+const MONO = 'IBM Plex Mono, ui-monospace, Consolas, monospace';
+$('#date').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+
+const axis = extra => Object.assign({ gridcolor: C.rule, zeroline: false, linecolor: C.rule, tickfont: { family: MONO, size: 11, color: C.muted }, ticks: '', fixedrange: true }, extra);
+const layout = extra => Object.assign({
+  paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+  font: { family: MONO, color: C.muted, size: 11 },
+  margin: { l: 40, r: 8, t: 12, b: 36 }, bargap: 0.28, showlegend: false,
+  hoverlabel: { bgcolor: C.ink, bordercolor: C.ink, font: { family: MONO, color: C.paper, size: 12 } },
+  xaxis: axis({ showgrid: false }), yaxis: axis({}),
+}, extra);
+const cfg = { displayModeBar: false, responsive: true };
+
+function kpi(label, v, unit, hint) {
+  return `<div class="kpi"><div class="eyebrow">${label}</div><div class="v">${v == null ? '—' : v}${v != null && unit ? `<small>${unit}</small>` : ''}</div><div class="h">${hint}</div></div>`;
+}
+const insRows = xs => xs.map((x, i) => `<div class="ins-row"><span class="i">0${i + 1}</span><b>${x.slot}</b><span>${x.avg}/h</span></div>`).join('');
+
+async function refresh() {
+  const d = await api('/api/dashboard');
+  $('#empty').hidden = !d.empty;
+  $('#content').hidden = d.empty;
+  if (d.empty) return;
+  const k = d.kpis;
+  $('#kpis').innerHTML = [
+    kpi('Waiting now', k.waiting_now, '', 'in the queue'),
+    kpi('Served today', k.served_today, '', 'completed tickets'),
+    kpi('Avg wait', k.avg_wait_today, 'min', 'from ticket to call'),
+    kpi('Avg service', k.avg_service_today, 'min', 'time at the counter'),
+    kpi('No-shows', k.no_show_rate, '%', 'of today\'s calls'),
+    kpi('Forecast error', k.prediction_mae != null ? '±' + k.prediction_mae : null, 'min', 'predicted vs actual wait'),
+  ].join('');
+  $('#busiest').innerHTML = insRows(d.busiest);
+  $('#quietest').innerHTML = insRows(d.quietest);
+
+  if (!window.Plotly) return;
+  Plotly.react('heat', [{
+    type: 'heatmap', x: d.heatmap.hours, y: d.heatmap.days, z: d.heatmap.z,
+    colorscale: [[0, '#F2EFE7'], [0.2, '#F3D3C4'], [0.45, '#EC9A7A'], [0.7, '#D8431F'], [1, '#6E220F']],
+    xgap: 3, ygap: 3, showscale: true,
+    colorbar: { thickness: 8, outlinewidth: 0, tickfont: { family: MONO, size: 10, color: C.muted }, len: 0.9 },
+    hovertemplate: '%{y} %{x}<br>%{z} arrivals/h<extra></extra>',
+  }], layout({ margin: { l: 44, r: 8, t: 6, b: 32 }, yaxis: axis({ autorange: 'reversed', showgrid: false, linecolor: 'rgba(0,0,0,0)' }), xaxis: axis({ showgrid: false, linecolor: 'rgba(0,0,0,0)' }) }), cfg);
+
+  const w = d.wait_by_hour.wait, peak = w.indexOf(Math.max(...w.filter(v => v != null)));
+  Plotly.react('byHour', [{
+    type: 'bar', x: d.wait_by_hour.hours, y: w, marker: { color: w.map((_, i) => i === peak ? C.signal : C.ink2), cornerradius: 3 },
+    hovertemplate: '%{x} · %{y:.1f} min<extra></extra>',
+    text: w.map((v, i) => i === peak ? v.toFixed(1) : ''), textposition: 'outside', textfont: { family: MONO, size: 11, color: C.ink }, cliponaxis: false,
+  }], layout({}), cfg);
+
+  Plotly.react('mix', [{
+    type: 'bar', orientation: 'h', y: d.mix.labels, x: d.mix.values, marker: { color: C.ink2, cornerradius: 3 },
+    text: d.mix.values, textposition: 'outside', textfont: { family: MONO, size: 11, color: C.ink }, cliponaxis: false,
+    hovertemplate: '%{y} · %{x} tickets<extra></extra>',
+  }], layout({ margin: { l: 150, r: 40, t: 12, b: 36 }, bargap: 0.45, yaxis: axis({ autorange: 'reversed', showgrid: false, tickfont: { family: 'Archivo, system-ui, sans-serif', size: 13, color: C.ink } }), xaxis: axis({}) }), cfg);
+
+  const dates = d.daily.dates.map(s => s.split(' ').slice(0, 2).join(' '));
+  Plotly.react('served', [{
+    type: 'bar', x: dates, y: d.daily.served, marker: { color: C.ink2, cornerradius: 3 },
+    hovertemplate: '%{x} · %{y} served<extra></extra>',
+  }], layout({}), cfg);
+
+  Plotly.react('avgWait', [{
+    type: 'scatter', mode: 'lines+markers', x: dates, y: d.daily.avg_wait,
+    line: { color: C.signal, width: 2 }, marker: { size: 8, color: C.signal, line: { color: C.paper, width: 2 } },
+    hovertemplate: '%{x} · %{y:.1f} min<extra></extra>',
+  }], layout({ hovermode: 'x', yaxis: axis({ rangemode: 'tozero' }) }), cfg);
+}
+
+async function run(btn, fn, msg) {
+  btn.disabled = true;
+  try { const r = await fn(); toast(msg(r)); } catch (e) { toast(e.message, true); }
+  btn.disabled = false;
+}
+$('#simHist').onclick = e => run(e.currentTarget, () => post('/api/simulate/history?days=14'), r => `Generated ${r.created.toLocaleString()} historical tickets`);
+$('#simRush').onclick = e => run(e.currentTarget, () => post('/api/simulate/rush?n=10'), () => '10 customers just walked in');
+$('#reset').onclick = e => { if (confirm('Delete every ticket, including history?')) run(e.currentTarget, () => post('/api/reset'), () => 'All data cleared'); };
+
+let pending;
+connectWS(() => { clearTimeout(pending); pending = setTimeout(refresh, 800); }, liveStatus($('#live')));
+</script>
+</body>
+</html>

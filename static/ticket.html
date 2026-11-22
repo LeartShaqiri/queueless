@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFE7">
+<title>Your ticket — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .notice { margin-top: 20px; padding: 13px 16px; background: var(--signal); color: #fff; font: 600 13px/1.35 var(--mono); text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; gap: 12px; }
+  .stub { position: relative; margin: 24px 0 0; background: var(--surface); border: 1px solid var(--rule); padding: 22px 24px 20px; overflow: hidden; transition: background .3s, color .3s, border-color .3s; }
+  .stub .no { font-size: clamp(96px, 30vw, 148px); margin: 18px 0 6px; letter-spacing: -0.02em; }
+  .stub .who { font-size: 15px; color: var(--ink-2); min-height: 22px; }
+  .perf { position: relative; border-top: 1.5px dashed var(--rule-2); margin: 22px -24px; }
+  .perf::before, .perf::after { content: ""; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--paper); }
+  .perf::before { left: -12px; } .perf::after { right: -12px; }
+  .headline { font-family: var(--display); font-stretch: 85%; font-weight: 750; font-size: 30px; line-height: 1.05; letter-spacing: -0.01em; margin-bottom: 18px; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--rule); }
+  .meta > div { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .meta > div:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--rule); }
+  .meta b { display: block; font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 30px; line-height: 1.1; margin-top: 2px; }
+  .blocks { display: grid; gap: 3px; margin: 4px 0 18px; }
+  .blocks i { height: 10px; background: var(--rule); }
+  .blocks i.on { background: var(--ink); }
+  .blocks i.me { background: var(--signal); }
+  .serial { display: flex; justify-content: space-between; margin-top: 16px; }
+  .stub.is-called { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .stub.is-called .eyebrow, .stub.is-called .who { color: rgba(255,255,255,.78); }
+  .stub.is-called .perf { border-color: rgba(255,255,255,.45); }
+  .stub.is-called .ocode { color: var(--ink); border-color: #fff; }
+  .stub.is-called .ocode .eyebrow { color: var(--muted); }
+  .stub.is-called .counter { font-size: clamp(56px, 17vw, 84px); margin: 6px 0 14px; }
+  .stub.is-called .btn { background: #fff; border-color: #fff; color: var(--signal-dark); }
+  .stub.is-called .btn:hover { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .holdtime { font: 600 15px var(--mono); }
+  .ocode { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -4px 0 22px; padding: 12px 14px; border: 1.5px solid var(--ink); background: #fff; }
+  .ocode b { font: 600 28px/1 var(--mono); letter-spacing: .18em; }
+  .stamp { position: absolute; top: 58px; right: 18px; transform: rotate(-9deg); border: 3px solid currentColor; padding: 6px 12px 5px; font: 600 22px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; opacity: .9; pointer-events: none; }
+  .stamp::after { content: ""; position: absolute; inset: 3px; border: 1px solid currentColor; }
+  .stamp.done { color: var(--go); } .stamp.no_show { color: var(--stop); } .stamp.cancelled { color: var(--muted); }
+  .closed .no { color: var(--rule-2); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .actions .btn { justify-content: center; }
+  .serving { margin: 36px 0 56px; }
+  .serving td { padding: 11px 0; }
+  @keyframes pop { 0% { transform: scale(.97); } 60% { transform: scale(1.01); } 100% { transform: scale(1); } }
+  .pop { animation: pop .45s ease-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0) rotate(0); }
+    10%, 50%, 90% { transform: translate(-10px, 0) rotate(-1.5deg); }
+    30%, 70% { transform: translate(10px, 0) rotate(1.5deg); }
+  }
+  .shake { animation: shake .55s cubic-bezier(.36,.07,.19,.97) 4; }
+  .recall-back { position: fixed; inset: 0; z-index: 50; background: rgba(25,23,19,.72); display: grid; place-items: center; padding: 16px; }
+  .recall-card { width: min(440px, 100%); background: var(--paper); border-top: 6px solid var(--signal); padding: 24px 22px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+  .recall-card .big { font-family: var(--display); font-stretch: 78%; font-weight: 800; font-size: 44px; line-height: .95; margin: 10px 0 14px; }
+  .recall-card .where { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 12px 0; margin: 14px 0 18px; }
+  .recall-card .where b { font-family: var(--display); font-stretch: 78%; font-size: 34px; font-weight: 800; }
+  .recall-card .acts { display: grid; gap: 10px; }
+  .recall-card .btn { justify-content: center; }
+  .ring { display: inline-flex; align-items: center; gap: 8px; font: 600 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--signal-dark); }
+  .ring::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--signal); animation: ping 1s ease-out infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(216,67,31,.6); } 100% { box-shadow: 0 0 0 12px rgba(216,67,31,0); } }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <header class="bar">
+    <a class="logo" href="/" data-logo>QueueLess</a>
+    <span class="live" id="live">Live</span>
+  </header>
+  <div id="notice" class="notice" hidden></div>
+  <div id="stub" class="stub"><div class="eyebrow">Loading ticket…</div></div>
+  <div class="actions" id="actions">
+    <button class="btn ghost" id="alerts">Turn on alerts</button>
+    <button class="btn stop" id="leave">Leave the line</button>
+  </div>
+  <section class="serving">
+    <div class="row spread" style="margin-bottom:6px"><span class="eyebrow">Now serving</span><span class="eyebrow" id="total"></span></div>
+    <table><tbody id="serving"></tbody></table>
+  </section>
+</div>
+<div class="recall-back" id="recall" hidden role="alertdialog" aria-modal="true" aria-labelledby="recallTitle">
+  <div class="recall-card" id="recallCard">
+    <span class="ring">Calling you again</span>
+    <div class="big" id="recallTitle">It's your turn — we're calling you again.</div>
+    <p class="muted" id="recallText"></p>
+    <div class="where"><span class="eyebrow">Go to</span><b id="recallCounter"></b></div>
+    <div class="row spread" style="margin-bottom:16px"><span class="eyebrow">Your place is held for</span><span class="holdtime num" id="recallCd"></span></div>
+    <div class="acts">
+      <button class="btn signal" id="recallAck">I'm on my way <span class="arrow">→</span></button>
+      <button class="btn ghost" id="recallClose">Close</button>
+    </div>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const token = location.pathname.split('/').pop();
+let t = null, firstPosition = null, notifiedNear = false, notifiedCall = false, alertsOn = false, skew = 0, lastStatus = null;
+const baseTitle = document.title;
+let seenRecall = +(storage('ql_recall_' + token) || 0);
+
+function showRecall() {
+  $('#recallText').textContent = `Ticket ${t.number}${t.name ? ' · ' + t.name : ''}. Please come to the counter now, or your ticket will move to the back of the line.`;
+  $('#recallCounter').textContent = t.counter_name;
+  $('#recall').hidden = false;
+  const card = $('#recallCard'), stub = $('#stub');
+  [card, stub].forEach(el => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); });
+  if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 500, 150, 900]);
+  chime(); setTimeout(chime, 900);
+  speak(`Ticket ${spokenNumber(t.number)}, we are calling you again. Please go to ${t.counter_name}.`);
+  try { if (window.Notification && Notification.permission === 'granted') new Notification('You are being called again', { body: `${t.number}: please go to ${t.counter_name} now`, requireInteraction: true }); } catch (e) {}
+  let i = 0; clearInterval(window._ft);
+  window._ft = setInterval(() => { document.title = (i++ % 2) ? 'Called again!' : baseTitle; if (i > 30) { clearInterval(window._ft); document.title = baseTitle; } }, 700);
+  $('#recallAck').focus();
+}
+function hideRecall() { $('#recall').hidden = true; clearInterval(window._ft); document.title = baseTitle; if (navigator.vibrate) navigator.vibrate(0); }
+$('#recallClose').onclick = hideRecall;
+$('#recallAck').onclick = async () => {
+  hideRecall();
+  try { await post(`/api/tickets/${token}/ack`); } catch (e) { toast(e.message, true); }
+};
+setInterval(() => {
+  if (!$('#recall').hidden && t && t.deadline) $('#recallCd').textContent = fmtClock(t.deadline - (Date.now() / 1000 + skew));
+  if (!$('#recall').hidden && t && t.status !== 'called') hideRecall();
+}, 500);
+
+function notify(title, body) {
+  if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 600]);
+  chime();
+  try { if (window.Notification && Notification.permission === 'granted') new Notification(title, { body }); } catch (e) {}
+  let i = 0; clearInterval(window._ft);
+  window._ft = setInterval(() => { document.title = (i++ % 2) ? title : baseTitle; if (i > 20) { clearInterval(window._ft); document.title = baseTitle; } }, 800);
+}
+
+const clock = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function render() {
+  const s = $('#stub');
+  const closed = ['done', 'no_show', 'cancelled'].includes(t.status);
+  s.className = 'stub' + (t.status === 'called' ? ' is-called' : '') + (closed ? ' closed' : '');
+  if (lastStatus && lastStatus !== t.status) { s.classList.add('pop'); }
+  lastStatus = t.status;
+
+  $('#leave').hidden = t.status !== 'waiting';
+  $('#alerts').hidden = alertsOn || !['waiting', 'called'].includes(t.status);
+  $('#actions').style.display = ($('#leave').hidden && $('#alerts').hidden) ? 'none' : '';
+  $('#actions').style.gridTemplateColumns = ($('#leave').hidden || $('#alerts').hidden) ? '1fr' : '1fr 1fr';
+
+  const top = `
+    <div class="row spread eyebrow"><span>${esc(t.service)}</span>${t.priority ? '<span class="tag prio">Priority</span>' : `<span>${clock(t.created_at)}</span>`}</div>
+    <div class="no display num">${esc(t.number)}</div>
+    <div class="who">${t.name ? esc(t.name) : '&nbsp;'}</div>
+    <div class="perf"></div>`;
+  const rowsAll = t.details_rows || [];
+  const oc = rowsAll.find(r => r.label === 'Order code');
+  const rows = rowsAll.filter(r => r !== oc);
+  const rcpt = rows.length
+    ? `<div style="margin-top:18px"><div class="eyebrow" style="margin-bottom:2px">Your details</div>${detailRows(rows)}</div>` : '';
+  const ocBox = oc ? `<div class="ocode"><span class="eyebrow">Your order code</span><b>${esc(oc.value)}</b></div>` : '';
+  const topWithCode = top + ocBox;
+  const serial = `<div class="serial eyebrow"><span>Issued ${clock(t.created_at)}</span><span>No. ${esc(token.slice(0, 6).toUpperCase())}</span></div>`;
+  let body = '';
+
+  if (t.status === 'waiting') {
+    if (firstPosition == null || t.position > firstPosition) firstPosition = t.position;
+    const total = Math.min(firstPosition, 16);
+    const ahead = Math.min(t.ahead, total - 1);
+    const blocks = Array.from({ length: total }, (_, i) => {
+      const done = total - 1 - ahead;
+      return `<i class="${i < done ? 'on' : i === total - 1 ? 'me' : ''}"></i>`;
+    }).join('');
+    body = `
+      <div class="headline">${t.ahead === 0 ? "You're next." : t.ahead === 1 ? 'One person ahead of you.' : `${t.ahead} people ahead of you.`}</div>
+      <div class="blocks" style="grid-template-columns:repeat(${total},1fr)" aria-hidden="true">${blocks}</div>
+      <div class="meta">
+        <div><span class="eyebrow">Estimated wait</span><b>${fmtRange(t.low_s, t.high_s)}</b></div>
+        <div><span class="eyebrow">Place in line</span><b class="num">${t.position} <span style="font-size:18px;color:var(--muted)">of ${t.waiting_total}</span></b></div>
+      </div>
+      <div class="row spread" style="margin-top:14px">
+        <span class="small muted">${t.recalls ? 'You missed one call and were moved back.' : 'Feel free to step out. We\'ll alert you at 3 ahead.'}</span>
+        <span class="tag dot ${CONF_TAG[t.confidence]}">${t.confidence} confidence</span>
+      </div>${rcpt}`;
+    if (t.ahead <= 3 && !notifiedNear) {
+      notifiedNear = true;
+      notify('Almost your turn', `${t.number}: ${t.ahead} ahead of you`);
+    }
+    const n = $('#notice');
+    n.hidden = t.ahead > 3;
+    n.innerHTML = `<span>${t.ahead === 0 ? 'You\'re next — please head back' : 'Almost your turn — head back now'}</span><span>${t.ahead} ahead</span>`;
+  } else if (t.status === 'called') {
+    $('#notice').hidden = true;
+    body = `
+      <div class="eyebrow">Please go to</div>
+      <div class="counter display">${esc(t.counter_name)}</div>
+      <div class="row spread" style="margin-bottom:16px"><span class="eyebrow">Holding your place</span><span class="holdtime num" id="cd"></span></div>
+      ${t.ack_at ? '<div class="headline" style="font-size:22px;margin:0">The counter knows you\'re on your way.</div>'
+                 : '<button class="btn block" id="ack">I\'m on my way <span class="arrow">→</span></button>'}`;
+    if (!notifiedCall) { notifiedCall = true; notify(`Go to ${t.counter_name}`, `Ticket ${t.number} is being called`); }
+    if (t.last_recall_at && t.last_recall_at >= t.called_at && t.last_recall_at > seenRecall) {
+      seenRecall = t.last_recall_at;
+      storage('ql_recall_' + token, String(seenRecall));
+      setTimeout(showRecall, 0);
+    }
+  } else if (t.status === 'serving') {
+    $('#notice').hidden = true;
+    body = `<div class="headline">Being served at ${esc(t.counter_name)}.</div>
+      <div class="meta"><div><span class="eyebrow">You waited</span><b>${fmtMin(t.called_at - t.created_at)}</b></div><div><span class="eyebrow">Started</span><b>${clock(t.started_at)}</b></div></div>${rcpt}`;
+  } else {
+    $('#notice').hidden = true;
+    const copy = {
+      done: ['Served', 'Thanks for your patience.', `You waited ${fmtMin(t.called_at - t.created_at)}` + (t.est_wait_at_issue != null ? `; we predicted ${fmtMin(t.est_wait_at_issue)}.` : '.')],
+      no_show: ['Expired', 'We called you twice.', 'This ticket has expired. Take a new number when you\'re back.'],
+      cancelled: ['Void', 'You left the line.', 'Your place was released to the next customer.'],
+    }[t.status];
+    body = `<div class="headline">${copy[1]}</div><p class="muted" style="margin-bottom:20px">${copy[2]}</p>${rcpt ? rcpt.replace('margin-top:18px', 'margin:0 0 20px') : ''}
+      <a class="btn solid block" href="/join">Take a new number <span class="arrow">→</span></a>`;
+    storage('ql_token', null);
+    s.innerHTML = topWithCode + body + serial + `<div class="stamp ${t.status}">${copy[0]}</div>`;
+    return renderServing();
+  }
+
+  s.innerHTML = topWithCode + body + serial;
+  const ackBtn = $('#ack');
+  if (ackBtn) ackBtn.onclick = async () => { try { await post(`/api/tickets/${token}/ack`); } catch (e) { toast(e.message, true); } };
+  tickCountdown();
+  renderServing();
+}
+
+function renderServing() {
+  $('#total').textContent = `${t.waiting_total} waiting`;
+  $('#serving').innerHTML = t.now_serving.length
+    ? t.now_serving.map(s => `<tr><td class="m muted">${esc(s.counter)}</td><td class="r tno">${esc(s.number)}</td></tr>`).join('')
+    : '<tr><td class="muted small">No one is at a counter yet.</td></tr>';
+}
+
+function tickCountdown() {
+  const cd = $('#cd');
+  if (cd && t && t.deadline) cd.textContent = fmtClock(t.deadline - (Date.now() / 1000 + skew));
+}
+setInterval(tickCountdown, 500);
+
+async function refresh() {
+  try {
+    t = await api('/api/tickets/' + token);
+    skew = t.server_now - Date.now() / 1000;
+    render();
+  } catch (e) {
+    $('#stub').innerHTML = '<div class="headline">We can\'t find this ticket.</div><a class="btn solid block" href="/join">Take a new number <span class="arrow">→</span></a>';
+    $('#actions').style.display = 'none';
+  }
+}
+
+$('#alerts').onclick = async () => {
+  unlockAudio(); chime(); alertsOn = true;
+  if (navigator.vibrate) navigator.vibrate(100);
+  try { if (window.Notification && Notification.permission === 'default') await Notification.requestPermission(); } catch (e) {}
+  toast('Alerts on. Keep this tab open.');
+  render();
+};
+$('#leave').onclick = async () => {
+  if (!confirm('Leave the line? Your place will go to the next person.')) return;
+  try { await post(`/api/tickets/${token}/cancel`); } catch (e) { toast(e.message, true); }
+};
+
+let pending;
+connectWS(() => { clearTimeout(pending); pending = setTimeout(refresh, 100); }, liveStatus($('#live')));
+</script>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .login { min-height: calc(100vh - 64px); display: grid; place-items: center; padding: 40px 0; }
+  .login form { width: min(380px, 100%); }
+  .login h1 { font-size: 56px; margin: 10px 0 28px; }
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); margin: 24px 0 0; overflow-x: auto; }
+  .tabs button { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 16px; margin-bottom: -1px; cursor: pointer;
+    font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); white-space: nowrap; }
+  .tabs button[aria-selected=true] { color: var(--ink); border-color: var(--signal); }
+  .pane { padding: 24px 0 64px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--rule); margin-bottom: 24px; }
+  .kpi { padding: 14px 16px 18px; border-left: 1px solid var(--rule); }
+  .kpi:first-child { border-left: 0; padding-left: 0; }
+  .kpi .v { font-family: var(--display); font-stretch: 72%; font-weight: 800; font-size: 40px; line-height: 1; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 14px; }
+  .filters .field { min-width: 150px; }
+  .filters input[type=text] { min-width: 220px; }
+  .act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .act .btn { padding: 7px 9px; font-size: 12px; }
+  .act select { width: auto; font-size: 13px; padding: 6px 22px 6px 0; }
+  tr.expand > td { background: var(--paper); padding: 6px 18px 14px; }
+  tr.trow { cursor: pointer; }
+  tr.trow:hover td { background: #fff; }
+  .inline { display: flex; gap: 8px; align-items: center; }
+  .inline input[type=text] { padding: 6px 0; font-size: 15px; }
+  .num-in { width: 90px !important; }
+  .danger-zone { border: 1.5px solid var(--stop); padding: 18px; }
+  .st-waiting { color: var(--ink-2); } .st-called { color: var(--hold); } .st-serving { color: var(--go); }
+  .st-done { color: var(--go); } .st-no_show, .st-cancelled { color: var(--stop); }
+  @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="bar-in"><a class="logo" href="/" data-logo>QueueLess <span class="sub">Admin</span></a></div>
+    <div class="bar-in" id="who" hidden><span class="live" id="live">Live</span><span class="eyebrow" id="user"></span><button class="btn ghost sm" id="logout">Sign out</button></div>
+  </header>
+
+  <section class="login" id="loginView" hidden>
+    <form id="loginForm" class="stack" autocomplete="on">
+      <div class="eyebrow">Restricted area</div>
+      <h1 class="display" style="margin-top:6px">Admin sign-in</h1>
+      <div class="field"><label class="eyebrow" for="u">Username</label><input type="text" id="u" autocomplete="username" required></div>
+      <div class="field" style="margin-top:20px"><label class="eyebrow" for="p">Password</label><input type="password" id="p" autocomplete="current-password" required
+        style="width:100%;font:400 17px var(--sans);background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:10px 0;border-radius:0;color:var(--ink)"></div>
+      <div class="err mono small" id="loginErr" style="color:var(--stop);min-height:18px;margin-top:10px"></div>
+      <button class="btn solid block" type="submit" style="margin-top:14px">Sign in <span class="arrow">→</span></button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button role="tab" data-tab="tickets">Tickets</button>
+      <button role="tab" data-tab="counters">Counters</button>
+      <button role="tab" data-tab="settings">Services & rules</button>
+      <button role="tab" data-tab="data">Data</button>
+    </nav>
+
+    <section class="pane" data-pane="overview">
+      <div class="kpis" id="kpis"></div>
+      <div class="two">
+        <section class="panel">
+          <div class="panel-h"><span class="eyebrow">Counters — live</span><a class="eyebrow" href="/staff">Staff console →</a></div>
+          <table><thead><tr><th>Counter</th><th>Status</th><th>Ticket</th><th class="r">Control</th></tr></thead><tbody id="ovCounters"></tbody></table>
+        </section>
+        <section class="panel">
+          <div class="panel-h"><span class="eyebrow">Today by category</span><span class="eyebrow">Money collected</span></div>
+          <table><thead><tr><th>Category</th><th class="r">Tickets</th><th class="r">Waiting</th><th class="r">Value</th></tr></thead><tbody id="ovCats"></tbody></table>
+        </section>
+      </div>
+      <section class="panel" style="margin-top:20px">
+        <div class="panel-h"><span class="eyebrow">Waiting now · <span id="ovWaitCount">0</span></span><span class="eyebrow">Next in line first</span></div>
+        <table><thead><tr><th>#</th><th>Ticket</th><th>Category</th><th>Name</th><th class="r">Expected call</th></tr></thead><tbody id="ovQueue"></tbody></table>
+      </section>
+    </section>
+
+    <section class="pane" data-pane="tickets" hidden>
+      <div class="filters">
+        <div class="field"><label class="eyebrow" for="fScope">Range</label><select id="fScope"><option value="today">Today</option><option value="active">Active only</option><option value="all">Last 28 days</option></select></div>
+        <div class="field"><label class="eyebrow" for="fStatus">Status</label><select id="fStatus"><option value="">All</option><option>waiting</option><option>called</option><option>serving</option><option>done</option><option value="no_show">no-show</option><option>cancelled</option></select></div>
+        <div class="field"><label class="eyebrow" for="fCode">Category</label><select id="fCode"><option value="">All</option></select></div>
+        <div class="field" style="flex:1"><label class="eyebrow" for="fQ">Search</label><input type="text" id="fQ" placeholder="Ticket, name, order code, store…"></div>
+        <a class="btn ghost sm" id="exportBtn" href="/api/admin/export.csv?scope=today">Export CSV</a>
+      </div>
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow" id="tCount">—</span><span class="eyebrow">Click a row for details</span></div>
+        <table><thead><tr><th>Ticket</th><th>Category</th><th>Name</th><th>Status</th><th>Created</th><th>Counter</th><th class="r">Actions</th></tr></thead><tbody id="tickets"></tbody></table>
+      </section>
+    </section>
+
+    <section class="pane" data-pane="counters" hidden>
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow">Counters</span></div>
+        <table><thead><tr><th>Name</th><th>Open</th><th>Now serving</th><th class="r"></th></tr></thead><tbody id="counters"></tbody></table>
+        <form id="addCounter" class="inline" style="padding:16px 18px;border-top:1px solid var(--rule)">
+          <input type="text" id="newCounter" placeholder="New counter name" maxlength="30">
+          <button class="btn solid sm" type="submit">Add counter</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="pane" data-pane="settings" hidden>
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow">Categories</span><span class="eyebrow">Default minutes is used until the estimator has real data</span></div>
+        <table><thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Default min</th><th class="r"></th></tr></thead><tbody id="services"></tbody></table>
+      </section>
+      <section class="panel" style="margin-top:20px">
+        <div class="panel-h"><span class="eyebrow">Queue rules</span></div>
+        <form id="rules" class="panel-b" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;align-items:end">
+          <div class="field"><label class="eyebrow" for="rNoShow">No-show timeout (seconds)</label><input type="text" inputmode="numeric" id="rNoShow"></div>
+          <div class="field"><label class="eyebrow" for="rHead">Priority head start (minutes)</label><input type="text" inputmode="numeric" id="rHead"></div>
+          <div class="field"><label class="eyebrow" for="rRecalls">Missed calls before expiry</label><input type="text" inputmode="numeric" id="rRecalls"></div>
+          <button class="btn solid" type="submit">Save rules</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="pane" data-pane="data" hidden>
+      <div class="two">
+        <section class="panel">
+          <div class="panel-h"><span class="eyebrow">Demo data</span></div>
+          <div class="panel-b stack">
+            <div class="inline"><input type="text" id="simDays" value="14" class="num-in" inputmode="numeric"><span class="muted small">days</span><button class="btn ghost sm" id="simHist">Simulate history</button></div>
+            <div class="inline"><input type="text" id="rushN" value="10" class="num-in" inputmode="numeric"><span class="muted small">customers</span><button class="btn ghost sm" id="simRush">Add a rush</button></div>
+            <p class="small muted">History replaces earlier simulated tickets. Real tickets are kept.</p>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-h"><span class="eyebrow">Export</span></div>
+          <div class="panel-b stack">
+            <a class="btn ghost" href="/api/admin/export.csv?scope=all">Download all tickets (CSV) <span class="arrow">↓</span></a>
+            <p class="small muted">Only card brand and last four digits are ever stored, so exports contain no full card numbers.</p>
+          </div>
+        </section>
+      </div>
+      <section class="danger-zone" style="margin-top:20px">
+        <div class="eyebrow" style="color:var(--stop)">Danger zone</div>
+        <p style="margin:8px 0 14px">Delete every ticket, real and simulated, and reopen all counters. This cannot be undone.</p>
+        <button class="btn stop" id="reset">Reset all data</button>
+      </section>
+    </section>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+let snap = null, services = [];
+const STATUS_LABEL = { waiting: 'Waiting', called: 'Called', serving: 'Serving', done: 'Done', no_show: 'No-show', cancelled: 'Cancelled' };
+const STATUS_TAG = { waiting: '', called: 'hold', serving: 'go', done: 'go', no_show: 'stop', cancelled: 'stop' };
+const clock = ts => ts ? new Date(ts * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+const euro = n => '€' + (+n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+async function adminApi(path, opts) {
+  try { return await api(path, opts); }
+  catch (e) { if (/sign-in required/i.test(e.message)) showLogin(); throw e; }
+}
+const send = (method, path, body) => adminApi(path, { method, body: JSON.stringify(body || {}) });
+
+function showLogin() { $('#app').hidden = true; $('#who').hidden = true; $('#loginView').hidden = false; $('#u').focus(); }
+async function showApp() {
+  const me = await api('/api/admin/me');
+  $('#user').textContent = 'Signed in as ' + me.user;
+  $('#loginView').hidden = true; $('#app').hidden = false; $('#who').hidden = false;
+  startLive();
+}
+
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  $('#loginErr').textContent = '';
+  try { await post('/api/admin/login', { username: $('#u').value.trim(), password: $('#p').value }); $('#p').value = ''; showApp(); }
+  catch (err) { $('#loginErr').textContent = err.message; }
+};
+$('#logout').onclick = async () => { await post('/api/admin/logout'); location.reload(); };
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
+  refreshAll();
+});
+const activeTab = () => document.querySelector('.tabs [aria-selected=true]').dataset.tab;
+
+async function act(fn, ok) {
+  try { await fn(); if (ok) toast(ok); } catch (e) { toast(e.message, true); }
+}
+
+// ---------- overview ----------
+async function renderOverview() {
+  const o = await adminApi('/api/admin/overview');
+  const st = o.by_status;
+  const money = Object.values(o.money).reduce((a, b) => a + b, 0);
+  const k = (l, v) => `<div class="kpi"><div class="eyebrow">${l}</div><div class="v">${v}</div></div>`;
+  $('#kpis').innerHTML = [k('Waiting', snap.waiting.length), k('At counters', (st.called || 0) + (st.serving || 0)),
+    k('Served today', st.done || 0), k('No-shows', st.no_show || 0), k('Cancelled', st.cancelled || 0), k('Value today', euro(money))].join('');
+  $('#ovCats').innerHTML = services.map(s => {
+    const c = o.by_service[s.code] || { tickets: 0, waiting: 0 };
+    const m = o.money[s.name];
+    return `<tr><td><b>${esc(s.code)}</b> ${esc(s.name)}</td><td class="m r">${c.tickets}</td><td class="m r">${c.waiting}</td><td class="m r">${m != null ? euro(m) : '<span class="muted">—</span>'}</td></tr>`;
+  }).join('');
+  $('#ovCounters').innerHTML = snap.counters.map(c => {
+    const cur = c.current;
+    const status = !c.is_open ? '<span class="tag dot stop">Closed</span>' : cur ? `<span class="tag dot ${STATUS_TAG[cur.status]}">${STATUS_LABEL[cur.status]}</span>` : '<span class="tag dot">Free</span>';
+    const btns = [];
+    if (c.is_open && (!cur || cur.status === 'serving')) btns.push(`<button class="btn solid sm" data-c="${c.id}" data-a="call">Call next</button>`);
+    if (cur && cur.status === 'called') btns.push(`<button class="btn ghost sm" data-c="${c.id}" data-a="start">Start</button><button class="btn signal sm" data-c="${c.id}" data-a="recall">Recall</button><button class="btn stop sm" data-c="${c.id}" data-a="noshow">No-show</button>`);
+    if (cur && cur.status === 'serving') btns.push(`<button class="btn ghost sm" data-c="${c.id}" data-a="complete">Complete</button>`);
+    btns.push(`<button class="btn ghost sm" data-c="${c.id}" data-a="toggle">${c.is_open ? 'Close' : 'Open'}</button>`);
+    return `<tr><td>${esc(c.name)}</td><td>${status}</td><td class="tno">${cur ? esc(cur.number) : '<span class="muted">—</span>'}</td><td><div class="act">${btns.join('')}</div></td></tr>`;
+  }).join('');
+  $('#ovCounters').querySelectorAll('button').forEach(b => b.onclick = () => act(async () => {
+    const r = await post(`/api/counters/${b.dataset.c}/${b.dataset.a}`);
+    if (r.message) toast(r.message);
+  }));
+  $('#ovWaitCount').textContent = snap.waiting.length;
+  $('#ovQueue').innerHTML = snap.waiting.slice(0, 12).map(t => `<tr><td class="m muted">${t.position}</td><td class="tno">${esc(t.number)} ${t.priority ? '<span class="tag prio">P</span>' : ''}</td>
+    <td class="small">${esc(t.service)}</td><td class="small">${esc(t.name || '')}</td><td class="m r">${fmtRange(t.low_s, t.high_s)}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="empty">Nobody is waiting.</td></tr>';
+}
+
+// ---------- tickets ----------
+let openRow = null;
+async function renderTickets() {
+  const params = new URLSearchParams({ scope: $('#fScope').value, status: $('#fStatus').value, code: $('#fCode').value, q: $('#fQ').value });
+  $('#exportBtn').href = '/api/admin/export.csv?scope=' + $('#fScope').value;
+  const rows = await adminApi('/api/admin/tickets?' + params);
+  $('#tCount').textContent = `${rows.length} ticket${rows.length === 1 ? '' : 's'}${rows.length >= 300 ? ' (first 300)' : ''}`;
+  const free = snap.counters.filter(c => c.is_open && !c.current);
+  $('#tickets').innerHTML = rows.map(t => {
+    const a = [];
+    if (t.status === 'waiting') {
+      a.push(free.length ? `<select data-call="${t.id}" aria-label="Call ${esc(t.number)} to a counter"><option value="">Call to…</option>${free.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>` : '');
+      a.push(`<button class="btn ghost" data-t="${t.id}" data-a="front">To front</button>`);
+      a.push(`<button class="btn ghost" data-t="${t.id}" data-a="priority">${t.priority ? 'Unprioritise' : 'Prioritise'}</button>`);
+    }
+    if (['called', 'serving'].includes(t.status)) a.push(`<button class="btn ghost" data-t="${t.id}" data-a="complete">Complete</button>`);
+    if (['called', 'serving', 'done', 'no_show', 'cancelled'].includes(t.status)) a.push(`<button class="btn ghost" data-t="${t.id}" data-a="requeue">Requeue</button>`);
+    if (['waiting', 'called', 'serving'].includes(t.status)) a.push(`<button class="btn stop" data-t="${t.id}" data-a="cancel">Cancel</button>`);
+    a.push(`<button class="btn stop" data-t="${t.id}" data-a="delete" title="Delete permanently">Delete</button>`);
+    const details = `<tr class="expand" data-for="${t.id}" ${openRow === t.id ? '' : 'hidden'}><td colspan="7">
+      ${detailRows(t.details_rows) || '<span class="muted small">No extra details.</span>'}
+      <div class="row spread small muted" style="margin-top:8px"><span>Called ${clock(t.called_at)} · Finished ${clock(t.finished_at)}${t.recalls ? ' · missed a call' : ''}</span><a href="/t/${esc(t.token)}" target="_blank" rel="noopener">Open customer ticket ↗</a></div></td></tr>`;
+    return `<tr class="trow" data-id="${t.id}"><td class="tno">${esc(t.number)}${t.priority ? ' <span class="tag prio">P</span>' : ''}</td>
+      <td class="small">${esc(t.service)}</td><td class="small">${esc(t.name || '')}</td>
+      <td><span class="tag dot ${STATUS_TAG[t.status]}">${STATUS_LABEL[t.status]}</span></td>
+      <td class="m">${clock(t.created_at)}</td><td class="small">${esc(t.counter_name || '—')}</td>
+      <td><div class="act">${a.join('')}</div></td></tr>${details}`;
+  }).join('') || '<tr><td colspan="7" class="empty">No tickets match.</td></tr>';
+
+  $('#tickets').querySelectorAll('tr.trow').forEach(r => r.onclick = e => {
+    if (e.target.closest('button, select, a')) return;
+    const id = +r.dataset.id;
+    openRow = openRow === id ? null : id;
+    $('#tickets').querySelectorAll('tr.expand').forEach(x => x.hidden = +x.dataset.for !== openRow);
+  });
+  $('#tickets').querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
+    if (b.dataset.a === 'delete' && !confirm('Delete this ticket permanently? This cannot be undone.')) return;
+    if (b.dataset.a === 'cancel' && !confirm('Cancel this ticket?')) return;
+    act(() => send('POST', `/api/admin/tickets/${b.dataset.t}`, { action: b.dataset.a }), 'Done');
+  });
+  $('#tickets').querySelectorAll('select[data-call]').forEach(s => s.onchange = () => {
+    if (s.value) act(() => send('POST', `/api/admin/tickets/${s.dataset.call}`, { action: 'call', counter_id: +s.value }), 'Called');
+  });
+}
+['fScope', 'fStatus', 'fCode'].forEach(id => $('#' + id).onchange = renderTickets);
+let qTimer; $('#fQ').oninput = () => { clearTimeout(qTimer); qTimer = setTimeout(renderTickets, 250); };
+
+// ---------- counters ----------
+function renderCounters() {
+  $('#counters').innerHTML = snap.counters.map(c => `<tr>
+    <td><form class="inline" data-rename="${c.id}"><input type="text" value="${esc(c.name)}" maxlength="30" aria-label="Counter name"><button class="btn ghost sm" type="submit">Rename</button></form></td>
+    <td><button class="switch" role="switch" aria-checked="${!!c.is_open}" data-toggle="${c.id}" style="appearance:none;border:0;background:none;cursor:pointer;display:inline-flex;gap:8px;align-items:center;font:500 12px var(--mono);text-transform:uppercase">
+      <span style="width:36px;height:20px;border-radius:10px;background:${c.is_open ? 'var(--go)' : 'var(--rule-2)'};position:relative;display:inline-block"><span style="position:absolute;top:3px;left:${c.is_open ? 19 : 3}px;width:14px;height:14px;border-radius:50%;background:#fff"></span></span>${c.is_open ? 'Open' : 'Closed'}</button></td>
+    <td class="tno">${c.current ? esc(c.current.number) : '<span class="muted">—</span>'}</td>
+    <td class="r"><button class="btn stop sm" data-del="${c.id}">Remove</button></td></tr>`).join('');
+  $('#counters').querySelectorAll('form[data-rename]').forEach(f => f.onsubmit = e => { e.preventDefault(); act(() => send('PUT', `/api/admin/counters/${f.dataset.rename}`, { name: f.querySelector('input').value }), 'Renamed'); });
+  $('#counters').querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => act(() => post(`/api/counters/${b.dataset.toggle}/toggle`)));
+  $('#counters').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('Remove this counter?')) act(() => send('DELETE', `/api/admin/counters/${b.dataset.del}`), 'Counter removed'); });
+}
+$('#addCounter').onsubmit = e => { e.preventDefault(); act(async () => { await send('POST', '/api/admin/counters', { name: $('#newCounter').value }); $('#newCounter').value = ''; }, 'Counter added'); };
+
+// ---------- services & rules ----------
+async function renderSettings() {
+  $('#services').innerHTML = services.map(s => `<tr data-sid="${s.id}">
+    <td class="tno">${esc(s.code)}</td>
+    <td><input type="text" data-f="name" value="${esc(s.name)}" maxlength="40"></td>
+    <td><input type="text" data-f="description" value="${esc(s.description || '')}" maxlength="120"></td>
+    <td><input type="text" data-f="default_minutes" value="${s.default_minutes}" class="num-in" inputmode="decimal"></td>
+    <td class="r"><button class="btn ghost sm" data-save="${s.id}">Save</button></td></tr>`).join('');
+  $('#services').querySelectorAll('[data-save]').forEach(b => b.onclick = () => {
+    const tr = b.closest('tr'), v = f => tr.querySelector(`[data-f=${f}]`).value;
+    act(() => send('PUT', `/api/admin/services/${b.dataset.save}`, { name: v('name'), description: v('description'), default_minutes: parseFloat(v('default_minutes').replace(',', '.')) }), 'Category saved');
+  });
+  const o = await adminApi('/api/admin/overview');
+  $('#rNoShow').value = o.settings.no_show_seconds;
+  $('#rHead').value = Math.round(o.settings.priority_head_start / 60);
+  $('#rRecalls').value = o.settings.max_recalls;
+}
+$('#rules').onsubmit = e => {
+  e.preventDefault();
+  act(() => send('PUT', '/api/admin/settings', { no_show_seconds: +$('#rNoShow').value, priority_head_start: Math.round(+$('#rHead').value * 60), max_recalls: +$('#rRecalls').value }), 'Rules saved');
+};
+
+// ---------- data ----------
+$('#simHist').onclick = () => act(async () => { const r = await post(`/api/simulate/history?days=${+$('#simDays').value || 14}`); toast(`Generated ${r.created.toLocaleString()} tickets`); });
+$('#simRush').onclick = () => act(() => post(`/api/simulate/rush?n=${+$('#rushN').value || 10}`), 'Customers added');
+$('#reset').onclick = () => {
+  if (prompt('Type RESET to delete every ticket.') !== 'RESET') return;
+  act(() => post('/api/reset'), 'All data cleared');
+};
+
+// ---------- live ----------
+async function refreshAll() {
+  if ($('#app').hidden) return;
+  snap = await api('/api/queue');
+  services = snap.services;
+  const fc = $('#fCode');
+  if (fc.options.length === 1) services.forEach(s => fc.insertAdjacentHTML('beforeend', `<option value="${esc(s.code)}">${esc(s.code)} · ${esc(s.name)}</option>`));
+  try {
+    const tab = activeTab();
+    if (tab === 'overview') await renderOverview();
+    else if (tab === 'tickets') await renderTickets();
+    else if (tab === 'counters') renderCounters();
+    else if (tab === 'settings' && !document.activeElement.closest('[data-pane=settings]')) await renderSettings();
+  } catch (e) { /* sign-in handled in adminApi */ }
+}
+
+let live = false, pending;
+function startLive() {
+  if (live) return refreshAll();
+  live = true;
+  connectWS(() => { clearTimeout(pending); pending = setTimeout(refreshAll, 200); }, liveStatus($('#live')));
+}
+
+api('/api/admin/me').then(showApp).catch(showLogin);
+</script>
+</body>
+</html>

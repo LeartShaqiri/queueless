@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff console — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 2px; }
+  .seg button { appearance: none; border: 0; background: transparent; font: 500 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 9px 12px; cursor: pointer; color: var(--ink); }
+  .seg button + button { border-left: 1px solid var(--ink); }
+  .seg button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
+  .seg button .x { color: var(--stop); }
+  .switch { appearance: none; display: inline-flex; align-items: center; gap: 9px; border: 0; background: none; cursor: pointer; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink); padding: 0; }
+  .switch .tr { width: 36px; height: 20px; border-radius: 10px; background: var(--rule-2); position: relative; transition: background .15s; }
+  .switch .tr::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch[aria-checked=true] .tr { background: var(--go); }
+  .switch[aria-checked=true] .tr::after { transform: translateX(16px); }
+  .layout { display: grid; grid-template-columns: minmax(340px, 5fr) 7fr; gap: 20px; padding: 24px 0 48px; align-items: start; }
+  .layout > div { display: grid; gap: 20px; }
+  .now-no { font-size: 112px; margin: 4px 0 4px; }
+  .now-meta { color: var(--ink-2); font-size: 15px; min-height: 22px; }
+  .idle { padding: 22px 0 18px; }
+  .idle .display { font-size: 44px; color: var(--rule-2); }
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+  .acts .wide { grid-column: span 2; padding: 18px; font-size: 17px; }
+  .status-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .timer { font: 500 13px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  tr.prio td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .now-no { font-size: 88px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div class="bar-in"><a class="logo" href="/" data-logo>QueueLess <span class="sub">Staff</span></a></div>
+    <div class="bar-in">
+      <div class="seg" id="seg" role="group" aria-label="Your counter"></div>
+      <button class="switch" id="toggle" role="switch"><span class="tr"></span><span id="toggleLbl"></span></button>
+      <span class="live" id="live">Live</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div>
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow" id="atLabel">At your counter</span><span id="stateTag"></span></div>
+        <div class="panel-b">
+          <div id="now"></div>
+          <div class="acts">
+            <button class="btn solid wide" id="call">Call next <span class="key">N</span></button>
+            <button class="btn ghost" id="start">Start serving <span class="key">S</span></button>
+            <button class="btn ghost" id="complete">Complete <span class="key">C</span></button>
+            <button class="btn ghost" id="recall">Re-announce <span class="key">R</span></button>
+            <button class="btn stop" id="noshow">No-show <span class="key">X</span></button>
+          </div>
+          <p class="small muted" style="margin-top:14px">Calling the next customer completes the current one. A called customer who doesn't respond within <span id="nss"></span> seconds is moved to the back once, then expires.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow">Counters</span></div>
+        <table><thead><tr><th>Counter</th><th>Status</th><th class="r">Ticket</th></tr></thead><tbody id="counters"></tbody></table>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow">Service-time model</span><span class="eyebrow">Updates live</span></div>
+        <table><thead><tr><th>Service</th><th class="r">Mean</th><th class="r">±</th><th>Based on</th></tr></thead><tbody id="models"></tbody></table>
+        <p class="small muted" style="padding:12px 18px 16px;border-top:1px solid var(--rule)">Today's last three hours when there's enough data, then the same hour on previous days, then the configured default.</p>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-h">
+        <span class="eyebrow">Queue · <span id="wcount" class="num">0</span></span>
+        <span class="eyebrow">New ticket waits <b id="nextWait" style="color:var(--ink)"></b></span>
+      </div>
+      <table>
+        <thead><tr><th style="width:44px">#</th><th>Ticket</th><th>Service</th><th class="r">Waited</th><th class="r">Expected call</th></tr></thead>
+        <tbody id="queue"></tbody>
+      </table>
+    </section>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+let snap = null, skew = 0;
+let cid = +(storage('ql_counter') || 1);
+const nowS = () => Date.now() / 1000 + skew;
+const STATE = { called: ['hold', 'Called'], serving: ['go', 'Serving'] };
+
+function render() {
+  if (!snap.counters.some(c => c.id === cid)) cid = snap.counters[0].id;
+  $('#seg').innerHTML = snap.counters.map(c =>
+    `<button aria-pressed="${c.id === cid}" data-id="${c.id}">${esc(c.name.replace('Counter ', 'C'))}${c.is_open ? '' : ' <span class="x">●</span>'}</button>`).join('');
+  $('#seg').querySelectorAll('button').forEach(b => b.onclick = () => { cid = +b.dataset.id; storage('ql_counter', cid); render(); });
+
+  const me = snap.counters.find(c => c.id === cid);
+  const cur = me.current;
+  $('#toggle').setAttribute('aria-checked', !!me.is_open);
+  $('#toggleLbl').textContent = me.is_open ? 'Open' : 'Closed';
+  $('#nss').textContent = snap.no_show_seconds;
+  $('#atLabel').textContent = me.name;
+
+  if (cur) {
+    const [cls, label] = cur.status === 'called' && cur.ack_at ? ['hold', 'On the way'] : STATE[cur.status];
+    $('#stateTag').innerHTML = `<span class="tag dot ${cls}">${label}</span>`;
+    $('#now').innerHTML = `
+      <div class="status-line"><span class="eyebrow">${esc(cur.service)}</span><span class="timer" id="timer"></span></div>
+      <div class="now-no display num">${esc(cur.number)}</div>
+      <div class="now-meta">${cur.name ? esc(cur.name) : 'No name given'}${cur.priority ? ' · <span class="tag prio">Priority</span>' : ''}${cur.recalls ? ' · missed one call' : ''}</div>
+      ${cur.details_rows && cur.details_rows.length ? `<div style="margin-top:16px;padding:4px 14px;background:var(--paper);border:1px solid var(--rule)">${detailRows(cur.details_rows)}</div>` : ''}`;
+  } else {
+    $('#stateTag').innerHTML = me.is_open ? '<span class="tag dot">Free</span>' : '<span class="tag dot stop">Closed</span>';
+    $('#now').innerHTML = `<div class="idle"><div class="display">${me.is_open ? 'Ready for the next customer' : 'This counter is closed'}</div></div>`;
+  }
+
+  const called = cur && cur.status === 'called';
+  $('#start').disabled = !called;
+  $('#noshow').disabled = !called;
+  $('#recall').disabled = !called;
+  $('#complete').disabled = !(cur && cur.status === 'serving');
+  $('#call').disabled = !me.is_open;
+
+  $('#counters').innerHTML = snap.counters.map(c => {
+    const st = !c.is_open ? '<span class="tag dot stop">Closed</span>'
+      : c.current ? `<span class="tag dot ${STATE[c.current.status][0]}">${STATE[c.current.status][1]}</span>` : '<span class="tag dot">Free</span>';
+    return `<tr><td>${esc(c.name)}</td><td>${st}</td><td class="r tno">${c.current ? esc(c.current.number) : '<span class="muted">—</span>'}</td></tr>`;
+  }).join('');
+
+  $('#models').innerHTML = snap.models.map(m => `
+    <tr><td><b>${esc(m.code)}</b> <span class="muted">${esc(m.name)}</span></td>
+    <td class="m r">${(m.mean / 60).toFixed(1)} min</td><td class="m r muted">${(m.sd / 60).toFixed(1)}</td>
+    <td><span class="tag dot ${CONF_TAG[m.confidence]}">${m.source}${m.n ? ' · ' + m.n : ''}</span></td></tr>`).join('');
+
+  $('#wcount').textContent = snap.waiting.length;
+  $('#nextWait').textContent = snap.next_wait ? fmtRange(snap.next_wait.low_s, snap.next_wait.high_s) : 'paused';
+  $('#queue').innerHTML = snap.waiting.length ? snap.waiting.map(t => `
+    <tr class="${t.priority ? 'prio' : ''}"><td class="m muted">${String(t.position).padStart(2, '0')}</td>
+    <td><span class="tno">${esc(t.number)}</span>${t.priority ? ' <span class="tag prio">Priority</span>' : ''}${t.recalls ? ' <span class="tag hold">Recalled</span>' : ''}<div class="small muted">${esc(t.name || '')}</div></td>
+    <td class="small">${esc(t.service)}</td>
+    <td class="m r" data-created="${t.created_at}"></td>
+    <td class="m r">${fmtRange(t.low_s, t.high_s)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">Nobody is waiting. New tickets appear here instantly.</td></tr>';
+  tick();
+}
+
+function tick() {
+  if (!snap) return;
+  document.querySelectorAll('[data-created]').forEach(el => el.textContent = fmtClock(nowS() - +el.dataset.created));
+  const cur = snap.counters.find(c => c.id === cid)?.current;
+  const el = $('#timer');
+  if (el && cur) el.textContent = cur.status === 'serving' ? 'Serving ' + fmtClock(nowS() - cur.started_at) : 'Called ' + fmtClock(nowS() - cur.called_at) + ' ago';
+}
+setInterval(tick, 1000);
+
+async function refresh() {
+  snap = await api('/api/queue');
+  skew = snap.now - Date.now() / 1000;
+  render();
+}
+
+async function act(action) {
+  try { const r = await post(`/api/counters/${cid}/${action}`); if (r.message) toast(r.message); }
+  catch (e) { toast(e.message, true); }
+}
+
+const keys = { n: 'call', s: 'start', c: 'complete', r: 'recall', x: 'noshow' };
+for (const a of Object.values(keys)) $('#' + a).onclick = () => act(a);
+$('#toggle').onclick = () => act('toggle');
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^[1-9]$/.test(e.key) && snap && snap.counters[+e.key - 1]) { cid = snap.counters[+e.key - 1].id; storage('ql_counter', cid); return render(); }
+  const a = keys[e.key.toLowerCase()];
+  if (a && !$('#' + a).disabled) act(a);
+});
+
+let pending;
+connectWS(() => { clearTimeout(pending); pending = setTimeout(refresh, 80); }, liveStatus($('#live')));
+</script>
+</body>
+</html>
