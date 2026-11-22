@@ -1,7 +1,7 @@
 """Per-category intake forms: what each queue needs from the customer, and how it's validated.
 
-Card handling: the full card number is checked (Luhn) and then discarded. Only the brand,
-last four digits and expiry are ever stored. CVV is never requested.
+Card handling: the full card number (Luhn) and CVV (length) are checked and then discarded.
+Only the brand, last four digits and expiry are ever stored.
 Cart totals are always recomputed on the server from catalogue prices.
 """
 import json
@@ -49,6 +49,7 @@ FORMS = {
         {"key": "basket", "label": "Your basket", "type": "cart", "depends": ["mall", "store"], "catalog": PRODUCTS},
         {"key": "card_number", "label": "Card number", "type": "cardnumber", "group": "card"},
         {"key": "card_expiry", "label": "Expiry", "type": "expiry", "width": "half", "group": "card"},
+        {"key": "card_cvv", "label": "CVV", "type": "cvv", "width": "half", "group": "card"},
     ],
     "P": [
         FIRST, LAST,
@@ -171,6 +172,10 @@ def validate(code: str, data: dict):
             else:
                 out["card_brand"] = card_brand(digits)
                 out["card_last4"] = digits[-4:]
+        elif kind == "cvv":
+            need = 4 if out.get("card_brand") == "Amex" else 3
+            if not (v.isdigit() and len(v) == need):
+                errors[key] = f"Enter the {need}-digit code on your card"
         elif kind == "expiry":
             m = re.fullmatch(r"(\d{1,2})\s*/\s*(\d{2})", v)
             if not m or not 1 <= int(m.group(1)) <= 12:
@@ -205,7 +210,7 @@ def display_rows(code: str, details: dict):
         rows.append({"label": "Order code", "value": details["order_code"], "strong": True})
     for f in FORMS.get(code, []):
         key, kind = f["key"], f["type"]
-        if key in ("first_name", "last_name", "full_name") or kind == "expiry":
+        if key in ("first_name", "last_name", "full_name") or kind in ("expiry", "cvv"):
             continue
         if kind == "cardnumber":
             if details.get("card_last4"):

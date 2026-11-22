@@ -198,6 +198,9 @@ function fieldHTML(f) {
       control = `<div class="money"><span>€</span><input type="text" id="${id}" name="${f.key}" inputmode="decimal" placeholder="0.00" value="${v}"></div>`; break;
     case 'cardnumber':
       control = `<input type="text" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23" value="${v}">`; break;
+    case 'cvv':
+      control = `<input type="password" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-csc" placeholder="•••" maxlength="4" pattern="[0-9]*"
+        style="width:100%;font:400 17px var(--sans);background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:10px 0;border-radius:0;color:var(--ink);letter-spacing:.2em">`; break;
     case 'expiry':
       control = `<input type="text" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" value="${v}">`; break;
     default:
@@ -215,7 +218,7 @@ function renderFields() {
   const html = fields.filter(f => f.group !== 'card').map(fieldHTML);
   if (card.length) html.push(`<div class="card-box"><div class="card-head"><span class="eyebrow">Pay by card</span><span class="brand" id="brand"></span></div>
       ${card.map(fieldHTML).join('')}
-      <div class="lock">${LOCK}<span>Checked on the spot, then discarded. We keep only the brand and last four digits — never the full number, and we never ask for the CVV.</span></div></div>`);
+      <div class="lock">${LOCK}<span>Checked on the spot, then discarded. We keep only the brand and last four digits — never the full number or the CVV.</span></div></div>`);
   $('#fields').innerHTML = html.join('');
   wire();
   updateSummary();
@@ -228,7 +231,7 @@ function wire() {
     const ev = el.type === 'radio' ? 'change' : 'input';
     el.addEventListener(ev, () => {
       clearErr(el.name);
-      values[el.name] = el.value;
+      if (el.name !== 'card_cvv') values[el.name] = el.value;
       if (parents.has(el.name)) { renderFields(); document.querySelector(`.field[data-key="${el.name}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     });
   });
@@ -348,6 +351,10 @@ $('#f').onsubmit = async e => {
     }
   }
   if (details.card_number && !luhn(details.card_number.replace(/\D/g, ''))) local.card_number = "That card number isn't valid";
+  if ('card_cvv' in details) {
+    const need = /^3[47]/.test(details.card_number.replace(/\D/g, '')) ? 4 : 3;
+    if (!new RegExp(`^\\d{${need}}$`).test(details.card_cvv)) local.card_cvv = `Enter the ${need}-digit code on your card`;
+  }
   if (Object.keys(local).length) return showErrors(local);
 
   $('#go').disabled = true;
