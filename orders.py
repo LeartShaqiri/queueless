@@ -46,10 +46,109 @@ def init():
             created_at REAL, accepted_at REAL, ready_at REAL, collected_at REAL, last_ring_at REAL);
         CREATE INDEX IF NOT EXISTS ix_o_biz ON orders(business, created_at);
         CREATE TABLE IF NOT EXISTS businesses(slug TEXT PRIMARY KEY, is_open INTEGER DEFAULT 1, pin TEXT);
+        CREATE TABLE IF NOT EXISTS biz_counters(
+            id INTEGER PRIMARY KEY, business TEXT, name TEXT, is_open INTEGER DEFAULT 1);
+        CREATE TABLE IF NOT EXISTS biz_qr(
+            code TEXT PRIMARY KEY, business TEXT, created_at REAL, active INTEGER DEFAULT 1, scans INTEGER DEFAULT 0);
         """
     )
+    if "counter_name" not in {r["name"] for r in core.q("PRAGMA table_info(orders)")}:
+        conn.execute("ALTER TABLE orders ADD COLUMN counter_name TEXT")
     conn.executemany("INSERT OR IGNORE INTO businesses(slug) VALUES (?)", [(s,) for s in BUSINESSES])
+    have = {r["business"] for r in core.q("SELECT DISTINCT business FROM biz_counters")}
+    for slug, b in BUSINESSES.items():
+        if slug not in have:
+            conn.executemany("INSERT INTO biz_counters(business, name) VALUES (?, ?)", [(slug, n) for n in _default_counters(slug, b)])
     conn.commit()
+
+
+DEFAULT_COUNTERS = {
+    "hebs": ["Pickup 1", "Pickup 2"],
+    "kfc": ["Pickup 1", "Pickup 2", "Pickup 3"],
+    "pano-pizza": ["Counter"],
+    "zara-albi-mall": ["Till 1", "Till 2"],
+    "h-m-prishtina-mall": ["Till 1", "Till 2"],
+    "neptun-royal-mall": ["Collection desk", "Till 1"],
+}
+
+
+def _default_counters(slug, b):
+    return DEFAULT_COUNTERS.get(slug) or (["Counter"] if b["kind"] == "food" else ["Till 1"])
+
+
+# ---------- per-business counters ----------
+
+def counters(slug):
+    return [dict(r) for r in core.q("SELECT * FROM biz_counters WHERE business=? ORDER BY id", (slug,))]
+
+
+def _counter(slug, cid):
+    r = core.q1("SELECT * FROM biz_counters WHERE id=? AND business=?", (cid, slug))
+    if not r:
+        raise core.QueueError("Counter not found")
+    return r
+
+
+def add_counter(slug, name):
+    name = (name or "").strip()[:30]
+    if not name:
+        raise core.QueueError("Give the counter a name")
+    if len(counters(slug)) >= 20:
+        raise core.QueueError("That's a lot of counters — 20 is the limit")
+    conn.execute("INSERT INTO biz_counters(business, name) VALUES (?, ?)", (slug, name))
+    conn.commit()
+
+
+def rename_counter(slug, cid, name):
+    _counter(slug, cid)
+    name = (name or "").strip()[:30]
+    if not name:
+        raise core.QueueError("Give the counter a name")
+    conn.execute("UPDATE biz_counters SET name=? WHERE id=?", (name, cid))
+    conn.commit()
+
+
+def toggle_counter(slug, cid):
+    _counter(slug, cid)
+    conn.execute("UPDATE biz_counters SET is_open = 1 - is_open WHERE id=?", (cid,))
+    conn.commit()
+
+
+def delete_counter(slug, cid):
+    _counter(slug, cid)
+    if len(counters(slug)) <= 1:
+        raise core.QueueError("Keep at least one counter")
+    conn.execute("DELETE FROM biz_counters WHERE id=?", (cid,))
+    conn.commit()
+
+
+# ---------- generated QR codes ----------
+
+def current_qr(slug):
+    r = core.q1("SELECT * FROM biz_qr WHERE business=? AND active=1 ORDER BY created_at DESC LIMIT 1", (slug,))
+    return dict(r) if r else None
+
+
+def generate_qr(slug):
+    """Create a fresh QR link for this business. Any previous sticker stops working."""
+    if slug not in BUSINESSES:
+        raise core.QueueError("Unknown business")
+    conn.execute("UPDATE biz_qr SET active=0 WHERE business=?", (slug,))
+    code = secrets.token_urlsafe(6)
+    conn.execute("INSERT INTO biz_qr(code, business, created_at) VALUES (?, ?, ?)", (code, slug, time.time()))
+    conn.commit()
+    return current_qr(slug)
+
+
+def resolve_qr(code):
+    """Returns (slug, active) for a scanned code, counting the scan; (None, False) if unknown."""
+    r = core.q1("SELECT * FROM biz_qr WHERE code=?", (code,))
+    if not r:
+        return None, False
+    if r["active"]:
+        conn.execute("UPDATE biz_qr SET scans = scans + 1 WHERE code=?", (code,))
+        conn.commit()
+    return r["business"], bool(r["active"])
 
 
 def reset():
@@ -194,7 +293,7 @@ def biz_orders(slug):
     return [_hydrate(r) for r in rows]
 
 
-def biz_action(slug, order_id, action, eta=None, reason=None):
+def biz_action(slug, order_id, action, eta=None, reason=None, counter_id=None):
     r = core.q1("SELECT * FROM orders WHERE id=? AND business=?", (order_id, slug))
     if not r:
         raise core.QueueError("Order not found")
@@ -217,7 +316,14 @@ def biz_action(slug, order_id, action, eta=None, reason=None):
     elif action == "ready":
         if st != "accepted":
             raise core.QueueError("Accept the order first")
-        conn.execute("UPDATE orders SET status='ready', ready_at=?, last_ring_at=? WHERE id=?", (now, now, order_id))
+        open_counters = [c for c in counters(slug) if c["is_open"]]
+        if not open_counters:
+            raise core.QueueError("Open a counter first, so the customer knows where to collect")
+        c = next((c for c in open_counters if c["id"] == counter_id), None) if counter_id else open_counters[0]
+        if not c:
+            raise core.QueueError("Choose an open counter")
+        conn.execute("UPDATE orders SET status='ready', ready_at=?, last_ring_at=?, counter_name=? WHERE id=?",
+                     (now, now, c["name"], order_id))
     elif action == "ring":
         if st != "ready":
             raise core.QueueError("Only ready orders can be rung")
@@ -247,6 +353,8 @@ def admin_businesses():
             "slug": slug, "name": b["name"], "logo": b["logo"], "place": b["place"], "sub": b["sub"], "kind": b["kind"],
             "is_open": bool(rows[slug]["is_open"]) if slug in rows else True,
             "has_pin": bool(rows.get(slug) and rows[slug]["pin"]),
+            "counters": [c["name"] for c in counters(slug)],
+            "qr": current_qr(slug),
             "orders_today": s.get("orders", 0) or 0, "active": s.get("active", 0) or 0,
             "value_today": round(s.get("value") or 0, 2), "cash_today": round(s.get("cash") or 0, 2),
         })

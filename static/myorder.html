@@ -110,7 +110,7 @@ function render() {
     head = 'Accepted — they\'re preparing it now.';
     extra = `<div class="eta"><span class="eyebrow">Ready in about</span><b id="eta"></b></div><p class="muted small">You can step away. Your phone will ring when it's ready.</p>`;
   } else if (o.status === 'ready') {
-    head = 'Ready! Come to the counter.';
+    head = o.counter_name ? `Ready! Collect at ${esc(o.counter_name)}.` : 'Ready! Come to the counter.';
     extra = `<p class="small">Show the code above${o.payment === 'cash' && !o.paid ? ` and pay €${esc(o.total)} in cash` : ''}.</p>`;
   } else if (o.status === 'collected') {
     head = 'Collected. Enjoy!';
@@ -146,6 +146,7 @@ function render() {
 }
 
 function ring() {
+  $('#ringTitle').textContent = o.counter_name ? `Collect at ${o.counter_name}.` : 'Come and collect your order.';
   $('#ringText').textContent = `${o.business_info.name} · order ${o.number} for ${o.customer}.`;
   $('#ringCode').textContent = o.pickup_code;
   $('#ringPay').textContent = o.payment === 'cash' && !o.paid ? `Please pay €${o.total} in cash at the counter.` : 'Already paid by card.';
@@ -153,8 +154,8 @@ function ring() {
   [$('#ringCard'), $('#stub')].forEach(el => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); });
   if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 500, 150, 900]);
   chime(); setTimeout(chime, 900);
-  speak(`Order ${o.number.replace('#', 'number ')} is ready. Please collect it from ${o.business_info.name}.`);
-  try { if (window.Notification && Notification.permission === 'granted') new Notification('Your order is ready', { body: `${o.business_info.name}: show code ${o.pickup_code}`, requireInteraction: true }); } catch (e) {}
+  speak(`Order ${o.number.replace('#', 'number ')} is ready. Please collect it at ${o.counter_name || o.business_info.name}.`);
+  try { if (window.Notification && Notification.permission === 'granted') new Notification('Your order is ready', { body: `${o.business_info.name}${o.counter_name ? ', ' + o.counter_name : ''}: show code ${o.pickup_code}`, requireInteraction: true }); } catch (e) {}
   let i = 0; clearInterval(window._ft);
   window._ft = setInterval(() => { document.title = (i++ % 2) ? 'Order ready!' : baseTitle; if (i > 30) { clearInterval(window._ft); document.title = baseTitle; } }, 700);
 }

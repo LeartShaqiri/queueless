@@ -38,7 +38,26 @@
   .timer.late { color: var(--stop); font-weight: 600; }
   .empty-col { padding: 26px 12px; text-align: center; color: var(--muted); font-size: 14px; border: 1px dashed var(--rule-2); }
   #start { position: fixed; inset: 0; background: rgba(242,239,231,.96); z-index: 20; display: grid; place-items: center; text-align: center; padding: 16px; }
-  @media (max-width: 960px) { .board { grid-template-columns: 1fr; } }
+  .btabs { display: flex; border-bottom: 1px solid var(--rule); margin-top: 16px; overflow-x: auto; }
+  .btabs button { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: 12px 16px; margin-bottom: -1px; cursor: pointer;
+    font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); white-space: nowrap; display: inline-flex; gap: 8px; align-items: center; }
+  .btabs button[aria-selected=true] { color: var(--ink); border-color: var(--signal); }
+  .badge { background: var(--signal); color: #fff; font: 600 11px/1 var(--mono); padding: 3px 6px; border-radius: 9px; }
+  .qr-layout { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 32px; align-items: start; }
+  .qr-card { padding: 22px; text-align: center; }
+  .qr-card img.qr { width: 100%; max-width: 280px; display: block; margin: 12px auto; mix-blend-mode: multiply; }
+  .qr-card .link { font: 500 12px var(--mono); word-break: break-all; color: var(--ink-2); }
+  .qr-card .meta { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--rule); margin: 16px -22px 16px; }
+  .qr-card .meta div { padding: 12px 16px; text-align: left; }
+  .qr-card .meta div + div { border-left: 1px solid var(--rule); }
+  .qr-card .meta b { display: block; font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 26px; }
+  .qr-card .acts { display: grid; gap: 8px; }
+  .qr-card .acts .btn { justify-content: center; }
+  .qr-empty { padding: 40px 10px; }
+  .qr-empty svg { color: var(--rule-2); }
+  .howto { margin: 0; padding-left: 20px; display: grid; gap: 12px; font-size: 16px; color: var(--ink-2); }
+  .pick-counter { width: 100%; margin-bottom: 6px; font-size: 14px; padding: 8px 24px 8px 0; }
+  @media (max-width: 960px) { .board, .qr-layout { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body class="ord">
@@ -65,6 +84,12 @@
   </section>
 
   <div id="app" hidden>
+    <nav class="btabs" role="tablist">
+      <button role="tab" data-tab="orders" aria-selected="true">Orders <span class="badge" id="tabNew" hidden></span></button>
+      <button role="tab" data-tab="counters">Counters</button>
+      <button role="tab" data-tab="qr">QR code</button>
+    </nav>
+    <div data-pane="orders">
     <div class="board">
       <section><div class="col-h"><b>New</b><span class="n" id="nNew">0</span></div><div class="col" id="colNew"></div></section>
       <section><div class="col-h"><b>Preparing</b><span class="n" id="nPrep">0</span></div><div class="col" id="colPrep"></div></section>
@@ -74,6 +99,34 @@
       <div class="panel-h"><span class="eyebrow">Today</span><span class="eyebrow" id="todaySum"></span></div>
       <table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Payment</th><th>Status</th><th class="r">Total</th></tr></thead><tbody id="history"></tbody></table>
     </section>
+    </div>
+
+    <div data-pane="counters" hidden style="padding:24px 0 48px;max-width:720px">
+      <p class="muted small" style="margin-bottom:14px">These are your own pickup points. When you mark an order ready you choose one, and the customer is told exactly where to collect. Closed counters can't be chosen.</p>
+      <section class="panel">
+        <div class="panel-h"><span class="eyebrow">Your counters</span><span class="eyebrow" id="cCount"></span></div>
+        <table><thead><tr><th>Name</th><th>Status</th><th class="r"></th></tr></thead><tbody id="counterRows"></tbody></table>
+        <form id="addCounter" class="row" style="padding:14px 18px;border-top:1px solid var(--rule)">
+          <input type="text" id="newCounter" maxlength="30" placeholder="e.g. Drive-through window" style="flex:1;min-width:180px">
+          <button class="btn solid sm" type="submit">Add counter</button>
+        </form>
+      </section>
+    </div>
+
+    <div data-pane="qr" hidden style="padding:24px 0 48px">
+      <div class="qr-layout">
+        <section class="panel qr-card" id="qrCard"></section>
+        <div>
+          <h2 class="display" style="font-size:34px;color:var(--ink);text-transform:none;letter-spacing:-.01em;margin-bottom:12px">Your door sticker</h2>
+          <ol class="howto">
+            <li><b>Generate</b> your business's own QR code. It only ever opens your page — your menu, your orders.</li>
+            <li><b>Print</b> the sticker and put it on your door or counter.</li>
+            <li>Customers <b>scan, order and pay</b> (card now or cash at pickup). Orders appear on this screen.</li>
+          </ol>
+          <p class="small muted" style="margin-top:14px">Lost a sticker or want to stop an old one? Generate a new code — every older sticker stops working straight away.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="start" hidden>
@@ -87,7 +140,55 @@
 <script>
 const slug = location.pathname.split('/').pop();
 let data = null, skew = 0, known = null, started = false;
-const eta = {};
+const eta = {}, pick = {};
+const fmtDate = ts => new Date(ts * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+document.querySelectorAll('.btabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.btabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('[data-pane]').forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
+});
+
+function renderCounters() {
+  $('#cCount').textContent = `${data.counters.filter(c => c.is_open).length} of ${data.counters.length} open`;
+  $('#counterRows').innerHTML = data.counters.map(c => `<tr>
+    <td><form class="row" data-rename="${c.id}" style="gap:8px;flex-wrap:nowrap"><input type="text" value="${esc(c.name)}" maxlength="30" aria-label="Counter name" style="padding:6px 0;font-size:15px"><button class="btn ghost sm" type="submit">Rename</button></form></td>
+    <td><button class="switch" role="switch" aria-checked="${!!c.is_open}" data-ctoggle="${c.id}"><span class="tr"></span>${c.is_open ? 'Open' : 'Closed'}</button></td>
+    <td class="r"><button class="btn stop sm" data-cdel="${c.id}">Remove</button></td></tr>`).join('');
+  const call = (m, p, b) => api(p, { method: m, body: JSON.stringify(b || {}) }).catch(e => toast(e.message, true));
+  $('#counterRows').querySelectorAll('form[data-rename]').forEach(f => f.onsubmit = e => { e.preventDefault(); call('PUT', `/api/biz/${slug}/counters/${f.dataset.rename}`, { name: f.querySelector('input').value }).then(r => r && toast('Renamed')); });
+  $('#counterRows').querySelectorAll('[data-ctoggle]').forEach(b => b.onclick = () => call('POST', `/api/biz/${slug}/counters/${b.dataset.ctoggle}/toggle`));
+  $('#counterRows').querySelectorAll('[data-cdel]').forEach(b => b.onclick = () => { if (confirm('Remove this counter?')) call('DELETE', `/api/biz/${slug}/counters/${b.dataset.cdel}`); });
+}
+$('#addCounter').onsubmit = async e => {
+  e.preventDefault();
+  try { await post(`/api/biz/${slug}/counters`, { name: $('#newCounter').value }); $('#newCounter').value = ''; toast('Counter added'); }
+  catch (err) { toast(err.message, true); }
+};
+
+function renderQr() {
+  const q = data.qr, b = data.business;
+  $('#qrCard').innerHTML = q ? `
+      <div class="eyebrow">${esc(b.name)} · your QR code</div>
+      <img class="qr" src="/api/qr/${esc(q.code)}.svg?v=${esc(q.code)}" alt="QR code for ${esc(b.name)}">
+      <div class="link">${esc(q.url.replace(/^https?:\/\//, ''))}</div>
+      <div class="meta"><div><span class="eyebrow">Scans</span><b>${q.scans}</b></div><div><span class="eyebrow">Generated</span><b style="font-size:18px;margin-top:6px">${fmtDate(q.created_at)}</b></div></div>
+      <div class="acts">
+        <a class="btn solid" href="/biz/${esc(slug)}/sticker" target="_blank" rel="noopener">Print sticker <span class="arrow">↗</span></a>
+        <a class="btn ghost" href="/api/qr/${esc(q.code)}.svg" download="${esc(slug)}-qr.svg">Download QR image</a>
+        <button class="btn stop" id="regen">Generate a new code</button>
+      </div>`
+    : `<div class="qr-empty">
+        <svg width="72" height="72" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h2v2h-2zm2 2h2v2h-2zm-2 2h2v2h-2zm4 0h2v4h-4v-2h2zm2-4h2v2h-2z"/></svg>
+        <h3 class="display" style="font-size:28px;margin:14px 0 6px">No QR code yet</h3>
+        <p class="muted small" style="margin-bottom:18px">Generate a code that sends customers straight to ${esc(b.name)}.</p>
+        <button class="btn solid block" id="gen" style="justify-content:center">Generate QR code</button></div>`;
+  const gen = async () => {
+    try { await post(`/api/biz/${slug}/qr`); toast('New QR code ready'); }
+    catch (e) { toast(e.message, true); }
+  };
+  $('#gen') && ($('#gen').onclick = gen);
+  $('#regen') && ($('#regen').onclick = () => { if (confirm('Generate a new code? Every sticker with the current code will stop working.')) gen(); });
+}
 const money = n => '€' + (+n).toFixed(2);
 const ago = ts => fmtClock(Date.now() / 1000 + skew - ts);
 const PAY_TAG = o => o.payment === 'card' ? `<span class="tag go">Card · paid</span>` : o.paid ? `<span class="tag go">Cash · paid</span>` : `<span class="tag hold">Cash · due</span>`;
@@ -113,9 +214,14 @@ function card(o) {
   } else if (o.status === 'accepted') {
     const left = o.ready_by - (Date.now() / 1000 + skew);
     timer = `<span class="timer ${left < 0 ? 'late' : ''}" data-due="${o.ready_by}">${left < 0 ? 'Late by ' + fmtClock(-left) : 'Due in ' + fmtClock(left)}</span>`;
-    btns = `<button class="btn signal" data-a="ready" data-id="${o.id}">Mark ready · ring customer</button>`;
+    const open = data.counters.filter(c => c.is_open);
+    if (!pick[o.id] || !open.some(c => c.id === pick[o.id])) pick[o.id] = open[0]?.id;
+    btns = open.length
+      ? `<select class="pick-counter" data-pick="${o.id}" aria-label="Collect at">${open.map(c => `<option value="${c.id}" ${c.id === pick[o.id] ? 'selected' : ''}>Collect at ${esc(c.name)}</option>`).join('')}</select>
+         <button class="btn signal" data-a="ready" data-id="${o.id}">Mark ready · ring customer</button>`
+      : `<p class="small" style="color:var(--stop)">All your counters are closed. Open one in the Counters tab.</p>`;
   } else if (o.status === 'ready') {
-    timer = `<span class="timer">Waiting ${ago(o.ready_at)}</span>`;
+    timer = `<span class="timer">Waiting ${ago(o.ready_at)} · at ${esc(o.counter_name || '—')}</span>`;
     btns = `<div class="row2"><button class="btn ghost" data-a="ring" data-id="${o.id}">Ring again</button>
       <button class="btn solid" data-a="collect" data-id="${o.id}">${o.payment === 'cash' && !o.paid ? `Cash ${money(o.total)} received` : 'Collected'}</button></div>`;
   }
@@ -150,11 +256,16 @@ function render() {
     <td>${PAY_TAG(o)}</td><td><span class="tag dot ${STATUS[o.status][1]}">${STATUS[o.status][0]}</span></td><td class="m r">${money(o.total)}</td></tr>`).join('')
     || '<tr><td colspan="6" class="empty">No orders yet today.</td></tr>';
 
+  $('#tabNew').hidden = !cols.colNew.length; $('#tabNew').textContent = cols.colNew.length;
+  if (!document.activeElement.closest('[data-pane=counters]')) renderCounters();
+  renderQr();
+  document.querySelectorAll('[data-pick]').forEach(s => s.onchange = () => { pick[s.dataset.pick] = +s.value; });
   document.querySelectorAll('[data-eta]').forEach(g => g.querySelectorAll('button').forEach(btn => btn.onclick = () => { eta[g.dataset.eta] = +btn.dataset.m; render(); }));
   document.querySelectorAll('button[data-a]').forEach(btn => btn.onclick = () => {
     const id = +btn.dataset.id, a = btn.dataset.a;
     if (a === 'accept') return act(id, 'accept', { eta: eta[id] || 10 });
     if (a === 'decline') { const r = prompt('Reason for declining (shown to the customer, optional):', 'Sold out'); if (r === null) return; return act(id, 'decline', { reason: r }); }
+    if (a === 'ready') return act(id, 'ready', { counter_id: pick[id] });
     act(id, a);
   });
 }

@@ -9,9 +9,10 @@ from pathlib import Path
 import qrcode
 import qrcode.image.svg
 import csv
+import html
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -139,6 +140,27 @@ async def stickers_page():
     return FileResponse(STATIC / "stickers.html")
 
 
+@app.get("/biz/{slug}/sticker", include_in_schema=False)
+async def biz_sticker_page(slug: str):
+    return FileResponse(STATIC / "stickers.html")
+
+
+@app.get("/s/{code}", include_in_schema=False)
+async def scan(code: str):
+    slug, active = orders.resolve_qr(code)
+    if slug and active:
+        return RedirectResponse(f"/b/{slug}", status_code=302)
+    name = orders.BUSINESSES.get(slug, {}).get("name") if slug else None
+    msg = (f"This {name} sticker has been replaced with a new one. Please scan the current sticker at the counter."
+           if name else "This QR code isn't linked to any business.")
+    return HTMLResponse(
+        f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>QR code not active</title><link rel="stylesheet" href="/static/style.css"></head>
+        <body><div class="wrap narrow" style="padding-top:64px"><div class="eyebrow">QueueLess</div>
+        <h1 class="display" style="font-size:44px;margin:10px 0 14px">QR code not active</h1><p class="muted">{html.escape(msg)}</p></div></body></html>""",
+        status_code=410 if slug else 404)
+
+
 # ---------- API ----------
 
 class NewTicket(BaseModel):
@@ -248,23 +270,85 @@ async def biz_logout(slug: str):
     return resp
 
 
+def qr_info(slug):
+    qr = orders.current_qr(slug)
+    return {**qr, "url": f"{base_url()}/s/{qr['code']}"} if qr else None
+
+
 @app.get("/api/biz/{slug}/orders")
 async def biz_list(slug: str, request: Request):
     biz_guard(request, slug)
-    return {"business": orders.public_business(slug), "orders": orders.biz_orders(slug), "server_now": time.time()}
+    return {"business": orders.public_business(slug), "orders": orders.biz_orders(slug),
+            "counters": orders.counters(slug), "qr": qr_info(slug), "server_now": time.time()}
+
+
+@app.get("/api/biz/{slug}/qr")
+async def biz_qr(slug: str, request: Request):
+    biz_guard(request, slug)
+    return {"business": orders.public_business(slug), "qr": qr_info(slug)}
+
+
+@app.post("/api/biz/{slug}/qr")
+async def biz_generate_qr(slug: str, request: Request):
+    biz_guard(request, slug)
+    orders.generate_qr(slug)
+    await orders_changed(slug)
+    return {"qr": qr_info(slug)}
+
+
+@app.get("/api/qr/{code}.svg")
+async def code_qr(code: str):
+    if not core.q1("SELECT 1 FROM biz_qr WHERE code=?", (code,)):
+        raise HTTPException(404, "QR code not found")
+    return qr_response(f"{base_url()}/s/{code}")
+
+
+class BizCounter(BaseModel):
+    name: str = Field(default="", max_length=30)
+
+
+async def _biz_counter_call(request, slug, fn, *args):
+    biz_guard(request, slug)
+    try:
+        fn(slug, *args)
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    await orders_changed(slug)
+    return {"counters": orders.counters(slug)}
+
+
+@app.post("/api/biz/{slug}/counters")
+async def biz_add_counter(slug: str, body: BizCounter, request: Request):
+    return await _biz_counter_call(request, slug, orders.add_counter, body.name)
+
+
+@app.put("/api/biz/{slug}/counters/{cid}")
+async def biz_rename_counter(slug: str, cid: int, body: BizCounter, request: Request):
+    return await _biz_counter_call(request, slug, orders.rename_counter, cid, body.name)
+
+
+@app.post("/api/biz/{slug}/counters/{cid}/toggle")
+async def biz_toggle_counter(slug: str, cid: int, request: Request):
+    return await _biz_counter_call(request, slug, orders.toggle_counter, cid)
+
+
+@app.delete("/api/biz/{slug}/counters/{cid}")
+async def biz_delete_counter(slug: str, cid: int, request: Request):
+    return await _biz_counter_call(request, slug, orders.delete_counter, cid)
 
 
 class BizAction(BaseModel):
     action: str
     eta: int | None = None
     reason: str | None = Field(default=None, max_length=120)
+    counter_id: int | None = None
 
 
 @app.post("/api/biz/{slug}/orders/{oid}")
 async def biz_order_action(slug: str, oid: int, body: BizAction, request: Request):
     biz_guard(request, slug)
     try:
-        orders.biz_action(slug, oid, body.action, body.eta, body.reason)
+        orders.biz_action(slug, oid, body.action, body.eta, body.reason, body.counter_id)
     except core.QueueError as e:
         raise HTTPException(400, str(e))
     await orders_changed(slug)
@@ -507,7 +591,11 @@ async def admin_settings(body: dict[str, int]):
 
 @app.get("/api/admin/businesses", dependencies=ADMIN)
 async def admin_businesses():
-    return {"businesses": orders.admin_businesses(), "base_url": base_url()}
+    rows = orders.admin_businesses()
+    for b in rows:
+        if b["qr"]:
+            b["qr"]["url"] = f"{base_url()}/s/{b['qr']['code']}"
+    return {"businesses": rows, "base_url": base_url()}
 
 
 @app.put("/api/admin/businesses/{slug}/pin", dependencies=ADMIN)

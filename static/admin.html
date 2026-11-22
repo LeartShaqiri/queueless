@@ -132,7 +132,7 @@
       </div>
       <div class="kpis" id="bizKpis"></div>
       <section class="panel">
-        <table><thead><tr><th>Business</th><th>Status</th><th class="r">Orders today</th><th class="r">Active</th><th class="r">Value</th><th class="r">Cash in</th><th>Staff PIN</th><th class="r">Open</th></tr></thead><tbody id="bizRows"></tbody></table>
+        <table><thead><tr><th>Business</th><th>Status</th><th>QR code</th><th>Counters</th><th class="r">Orders today</th><th class="r">Active</th><th class="r">Value</th><th class="r">Cash in</th><th>Staff PIN</th><th class="r">Open</th></tr></thead><tbody id="bizRows"></tbody></table>
       </section>
     </section>
 
@@ -331,6 +331,9 @@ async function renderBusinesses() {
       <div><b>${esc(b.name)}</b><div class="small muted">${esc(b.place || b.sub)}</div></div></div>
       <div class="small" style="margin-top:6px"><a href="/biz/${esc(b.slug)}" target="_blank" rel="noopener">Order screen ↗</a> · <a href="/b/${esc(b.slug)}" target="_blank" rel="noopener">Customer page ↗</a></div></td>
     <td>${b.is_open ? '<span class="tag dot go">Open</span>' : '<span class="tag dot stop">Closed</span>'}</td>
+    <td>${b.qr ? `<span class="tag dot go">Active · ${b.qr.scans} scans</span><div class="small" style="margin-top:4px"><a href="/biz/${esc(b.slug)}/sticker" target="_blank" rel="noopener">Sticker ↗</a></div>`
+      : `<button class="btn ghost sm" data-gen="${esc(b.slug)}">Generate</button>`}</td>
+    <td class="small">${b.counters.map(esc).join(', ')}</td>
     <td class="m r">${b.orders_today}</td><td class="m r">${b.active}</td><td class="m r">${euro(b.value_today)}</td><td class="m r">${euro(b.cash_today)}</td>
     <td><form class="inline" data-pin="${esc(b.slug)}"><input type="password" inputmode="numeric" maxlength="8" placeholder="${b.has_pin ? '••••  (set)' : 'Not set'}" class="num-in" style="width:110px !important;font:400 15px var(--sans);background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:6px 0;color:var(--ink)" aria-label="New PIN for ${esc(b.name)}"><button class="btn ghost sm" type="submit">${b.has_pin ? 'Change' : 'Set'}</button></form></td>
     <td class="r"><button class="btn ghost sm" data-btoggle="${esc(b.slug)}">${b.is_open ? 'Close' : 'Open'}</button></td></tr>`).join('');
@@ -338,6 +341,7 @@ async function renderBusinesses() {
     e.preventDefault();
     act(async () => { await send('PUT', `/api/admin/businesses/${f.dataset.pin}/pin`, { pin: f.querySelector('input').value }); f.querySelector('input').value = ''; renderBusinesses(); }, 'PIN saved');
   });
+  $('#bizRows').querySelectorAll('[data-gen]').forEach(b => b.onclick = () => act(() => post(`/api/biz/${b.dataset.gen}/qr`), 'QR code generated'));
   $('#bizRows').querySelectorAll('[data-btoggle]').forEach(b => b.onclick = () => act(() => post(`/api/admin/businesses/${b.dataset.btoggle}/toggle`)));
 }
 

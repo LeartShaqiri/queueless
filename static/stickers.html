@@ -11,7 +11,7 @@
   .sticker { background: #fff; border: 1px solid var(--rule-2); border-radius: 14px; padding: 20px 20px 16px; display: flex; flex-direction: column; align-items: center; text-align: center; break-inside: avoid; page-break-inside: avoid; position: relative; overflow: hidden; }
   .sticker::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px; background: var(--signal); }
   .s-logo { height: 64px; width: 100%; display: grid; place-items: center; margin: 8px 0 6px; overflow: hidden; }
-  .s-logo img { max-height: 100%; max-width: 72%; object-fit: contain; }
+  .s-logo img { height: 64px; width: 72%; object-fit: contain; }
   .s-name { font-family: var(--display); font-stretch: 80%; font-weight: 800; font-size: 26px; line-height: 1; }
   .s-place { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-top: 4px; min-height: 14px; }
   .s-qr { width: 190px; height: 190px; margin: 12px 0 8px; }
@@ -22,6 +22,10 @@
   .s-foot { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--rule-2); width: 100%; justify-content: center; font: 500 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
   .s-foot svg { width: 18px; height: 12px; color: var(--signal); }
   .s-url { font: 500 9.5px var(--mono); color: var(--muted); margin-top: 4px; word-break: break-all; }
+  .noqr { display: grid; place-items: center; text-align: center; border: 1.5px dashed var(--rule-2); color: var(--muted); font-size: 13px; padding: 16px; }
+  body.one .sheet { grid-template-columns: minmax(300px, 420px); justify-content: center; }
+  body.one .s-qr { width: 260px; height: 260px; }
+  @media print { body.one .sheet { grid-template-columns: 110mm; } }
   img[src$="prishtina.png"], img[src$="pano.jpg"] { transform: scale(1.4); }
   img[src$="tommy-hilfiger.webp"] { transform: scale(2.2); }
   img[src$=".webp"] { transform: scale(1.3); }
@@ -55,17 +59,29 @@ function render() {
       <div class="s-logo"><img src="${esc(b.logo)}" alt=""></div>
       <div class="s-name">${esc(b.name)}</div>
       <div class="s-place">${esc(b.place || b.sub)}</div>
-      <img class="s-qr" src="/api/b/${esc(b.slug)}/qr.svg" alt="QR code for ${esc(b.name)}">
+      ${b.qr ? `<img class="s-qr" src="/api/qr/${esc(b.qr.code)}.svg" alt="QR code for ${esc(b.name)}">`
+        : `<div class="s-qr noqr">No QR code generated yet.<br>Generate one on <a href="/biz/${esc(b.slug)}">${esc(b.name)}'s screen</a>.</div>`}
       <div class="s-cta">Scan to order here</div>
       <div class="s-sub">Order on your phone. We'll ring you when it's ready.</div>
       <div class="s-pay"><span>Card</span><span>Cash at pickup</span></div>
-      <div class="s-url">${esc(base.replace(/^https?:\/\//, ''))}/b/${esc(b.slug)}</div>
+      <div class="s-url">${b.qr ? esc(b.qr.url.replace(/^https?:\/\//, '')) : ''}</div>
       <div class="s-foot">${LOGO_MARK}<span>Powered by QueueLess</span></div>
     </article>`).join('');
 }
 $('#filter').onchange = render;
-api('/api/admin/businesses').then(r => { all = r.businesses; base = r.base_url; render(); })
-  .catch(() => { $('#sheet').innerHTML = '<p>Admin sign-in required. <a href="/admin">Sign in</a>, then reopen this page.</p>'; });
+const single = location.pathname.match(/^\/biz\/([^/]+)\/sticker/);
+if (single) {
+  const slug = single[1];
+  document.querySelector('.logo').href = '/biz/' + slug;
+  $('#filter').hidden = true;
+  document.querySelector('.tools p').textContent = 'Print this sticker and put it on your door or counter. It opens your business only.';
+  document.body.classList.add('one');
+  api(`/api/biz/${slug}/qr`).then(r => { all = [{ ...r.business, qr: r.qr }]; render(); })
+    .catch(() => { $('#sheet').innerHTML = `<p>Sign in on <a href="/biz/${esc(slug)}">your business screen</a> first, then reopen this page.</p>`; });
+} else {
+  api('/api/admin/businesses').then(r => { all = r.businesses; base = r.base_url; render(); })
+    .catch(() => { $('#sheet').innerHTML = '<p>Admin sign-in required. <a href="/admin">Sign in</a>, then reopen this page.</p>'; });
+}
 </script>
 </body>
 </html>
