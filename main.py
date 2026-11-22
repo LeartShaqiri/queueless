@@ -19,6 +19,7 @@ import analytics
 import auth
 import core
 import forms
+import orders
 import simulate
 
 STATIC = Path(__file__).parent / "static"
@@ -66,7 +67,8 @@ async def no_show_watcher():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     core.init_db()
-    task = asyncio.create_task(no_show_watcher())
+    orders.init()
+    task =asyncio.create_task(no_show_watcher())
     yield
     task.cancel()
 
@@ -84,9 +86,19 @@ def lan_ip():
         return "127.0.0.1"
 
 
+def base_url():
+    return (os.environ.get("PUBLIC_URL") or f"http://{lan_ip()}:{PORT}").rstrip("/")
+
+
 def join_url():
-    base = os.environ.get("PUBLIC_URL") or f"http://{lan_ip()}:{PORT}"
-    return base.rstrip("/") + "/join"
+    return base_url() + "/join"
+
+
+def qr_response(url):
+    img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=12, border=2)
+    buf = io.BytesIO()
+    img.save(buf)
+    return Response(buf.getvalue(), media_type="image/svg+xml")
 
 
 # ---------- pages ----------
@@ -107,6 +119,26 @@ async def ticket_page(token: str):
     return FileResponse(STATIC / "ticket.html")
 
 
+@app.get("/b/{slug}", include_in_schema=False)
+async def business_page(slug: str):
+    return FileResponse(STATIC / "order.html")
+
+
+@app.get("/o/{token}", include_in_schema=False)
+async def order_page(token: str):
+    return FileResponse(STATIC / "myorder.html")
+
+
+@app.get("/biz/{slug}", include_in_schema=False)
+async def biz_page(slug: str):
+    return FileResponse(STATIC / "biz.html")
+
+
+@app.get("/admin/stickers", include_in_schema=False)
+async def stickers_page():
+    return FileResponse(STATIC / "stickers.html")
+
+
 # ---------- API ----------
 
 class NewTicket(BaseModel):
@@ -122,10 +154,129 @@ async def info():
 
 @app.get("/api/qr.svg")
 async def qr_svg():
-    img = qrcode.make(join_url(), image_factory=qrcode.image.svg.SvgPathImage, box_size=12, border=2)
-    buf = io.BytesIO()
-    img.save(buf)
-    return Response(buf.getvalue(), media_type="image/svg+xml")
+    return qr_response(join_url())
+
+
+# ---------- scan-to-order ----------
+
+async def orders_changed(slug):
+    await hub.broadcast({"type": "orders", "business": slug})
+
+
+@app.get("/api/b/{slug}")
+async def get_business(slug: str):
+    b = orders.public_business(slug)
+    if not b:
+        raise HTTPException(404, "Business not found")
+    return b
+
+
+@app.get("/api/b/{slug}/qr.svg")
+async def business_qr(slug: str):
+    if slug not in orders.BUSINESSES:
+        raise HTTPException(404, "Business not found")
+    return qr_response(f"{base_url()}/b/{slug}")
+
+
+class NewOrder(BaseModel):
+    name: str = Field(default="", max_length=60)
+    items: dict[str, int] = Field(default_factory=dict)
+    payment: str = ""
+    card_number: str = Field(default="", max_length=30)
+    card_expiry: str = Field(default="", max_length=7)
+    card_cvv: str = Field(default="", max_length=4)
+
+
+@app.post("/api/b/{slug}/orders")
+async def new_order(slug: str, body: NewOrder):
+    try:
+        token = orders.place_order(slug, body.model_dump())
+    except forms.FormError as e:
+        raise HTTPException(422, {"message": str(e), "fields": e.errors})
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    await orders_changed(slug)
+    return {"token": token}
+
+
+@app.get("/api/orders/{token}")
+async def get_order(token: str):
+    o = orders.order_view(token)
+    if not o:
+        raise HTTPException(404, "Order not found")
+    return o
+
+
+@app.post("/api/orders/{token}/cancel")
+async def cancel_order(token: str):
+    try:
+        slug = orders.cancel(token)
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    await orders_changed(slug)
+    return {"ok": True}
+
+
+def biz_guard(request: Request, slug: str):
+    if slug not in orders.BUSINESSES:
+        raise HTTPException(404, "Business not found")
+    if not auth.biz_allowed(request, slug):
+        raise HTTPException(401, "Business sign-in required")
+
+
+class PinBody(BaseModel):
+    pin: str = Field(max_length=12)
+
+
+@app.post("/api/biz/{slug}/login")
+async def biz_login(slug: str, body: PinBody, request: Request):
+    if slug not in orders.BUSINESSES:
+        raise HTTPException(404, "Business not found")
+    ok = orders.check_pin(slug, body.pin)
+    auth.throttle(f"biz:{request.client.host if request.client else '?'}:{slug}", ok)
+    if not ok:
+        raise HTTPException(401, "Wrong PIN, or no PIN has been set for this business yet")
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(auth.BIZ_COOKIE, auth.make_biz_token(slug), max_age=auth.SESSION_SECONDS, httponly=True, samesite="strict")
+    return resp
+
+
+@app.post("/api/biz/{slug}/logout")
+async def biz_logout(slug: str):
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.BIZ_COOKIE)
+    return resp
+
+
+@app.get("/api/biz/{slug}/orders")
+async def biz_list(slug: str, request: Request):
+    biz_guard(request, slug)
+    return {"business": orders.public_business(slug), "orders": orders.biz_orders(slug), "server_now": time.time()}
+
+
+class BizAction(BaseModel):
+    action: str
+    eta: int | None = None
+    reason: str | None = Field(default=None, max_length=120)
+
+
+@app.post("/api/biz/{slug}/orders/{oid}")
+async def biz_order_action(slug: str, oid: int, body: BizAction, request: Request):
+    biz_guard(request, slug)
+    try:
+        orders.biz_action(slug, oid, body.action, body.eta, body.reason)
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    await orders_changed(slug)
+    return {"ok": True}
+
+
+@app.post("/api/biz/{slug}/toggle")
+async def biz_toggle(slug: str, request: Request):
+    biz_guard(request, slug)
+    orders.toggle_open(slug)
+    await orders_changed(slug)
+    return {"ok": True}
 
 
 @app.get("/api/forms")
@@ -232,6 +383,7 @@ async def sim_rush(n: int = 10):
 @app.post("/api/reset", dependencies=ADMIN)
 async def reset():
     core.reset()
+    orders.reset()
     await changed()
     return {"ok": True}
 
@@ -351,6 +503,30 @@ async def admin_settings(body: dict[str, int]):
         raise HTTPException(400, str(e))
     await changed()
     return s
+
+
+@app.get("/api/admin/businesses", dependencies=ADMIN)
+async def admin_businesses():
+    return {"businesses": orders.admin_businesses(), "base_url": base_url()}
+
+
+@app.put("/api/admin/businesses/{slug}/pin", dependencies=ADMIN)
+async def admin_business_pin(slug: str, body: PinBody):
+    try:
+        orders.set_pin(slug, body.pin)
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@app.post("/api/admin/businesses/{slug}/toggle", dependencies=ADMIN)
+async def admin_business_toggle(slug: str):
+    try:
+        orders.toggle_open(slug)
+    except core.QueueError as e:
+        raise HTTPException(400, str(e))
+    await orders_changed(slug)
+    return {"ok": True}
 
 
 @app.get("/api/admin/export.csv", dependencies=ADMIN)

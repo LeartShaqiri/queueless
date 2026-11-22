@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>QR stickers — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 20px 0; }
+  .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; padding-bottom: 48px; }
+  .sticker { background: #fff; border: 1px solid var(--rule-2); border-radius: 14px; padding: 20px 20px 16px; display: flex; flex-direction: column; align-items: center; text-align: center; break-inside: avoid; page-break-inside: avoid; position: relative; overflow: hidden; }
+  .sticker::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px; background: var(--signal); }
+  .s-logo { height: 64px; width: 100%; display: grid; place-items: center; margin: 8px 0 6px; overflow: hidden; }
+  .s-logo img { max-height: 100%; max-width: 72%; object-fit: contain; }
+  .s-name { font-family: var(--display); font-stretch: 80%; font-weight: 800; font-size: 26px; line-height: 1; }
+  .s-place { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-top: 4px; min-height: 14px; }
+  .s-qr { width: 190px; height: 190px; margin: 12px 0 8px; }
+  .s-cta { font-family: var(--display); font-stretch: 78%; font-weight: 800; font-size: 30px; line-height: 1; }
+  .s-sub { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+  .s-pay { display: flex; gap: 6px; margin-top: 10px; }
+  .s-pay span { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; border: 1.5px solid var(--ink); padding: 4px 7px; border-radius: 2px; }
+  .s-foot { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--rule-2); width: 100%; justify-content: center; font: 500 10px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  .s-foot svg { width: 18px; height: 12px; color: var(--signal); }
+  .s-url { font: 500 9.5px var(--mono); color: var(--muted); margin-top: 4px; word-break: break-all; }
+  img[src$="prishtina.png"], img[src$="pano.jpg"] { transform: scale(1.4); }
+  img[src$="tommy-hilfiger.webp"] { transform: scale(2.2); }
+  img[src$=".webp"] { transform: scale(1.3); }
+  @media print {
+    body { background: #fff; }
+    .tools, header.bar { display: none !important; }
+    .wrap { max-width: none; padding: 0; }
+    .sheet { grid-template-columns: repeat(2, 1fr); gap: 10mm; }
+    .sticker { border-color: #bbb; }
+    @page { margin: 12mm; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar"><a class="logo" href="/admin" data-logo>QueueLess <span class="sub">Stickers</span></a></header>
+  <div class="tools">
+    <p class="muted small" style="max-width:560px">One sticker per business. Print, cut, and put each one on that business's door or counter. Each QR opens that business's own order page.</p>
+    <div class="row"><select id="filter" style="width:auto"><option value="">All businesses</option><option value="food">Restaurants</option><option value="shop">Stores</option></select>
+      <button class="btn solid sm" onclick="window.print()">Print</button></div>
+  </div>
+  <div class="sheet" id="sheet"><p class="muted">Loading…</p></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+let all = [], base = '';
+function render() {
+  const kind = $('#filter').value;
+  $('#sheet').innerHTML = all.filter(b => !kind || b.kind === kind).map(b => `
+    <article class="sticker">
+      <div class="s-logo"><img src="${esc(b.logo)}" alt=""></div>
+      <div class="s-name">${esc(b.name)}</div>
+      <div class="s-place">${esc(b.place || b.sub)}</div>
+      <img class="s-qr" src="/api/b/${esc(b.slug)}/qr.svg" alt="QR code for ${esc(b.name)}">
+      <div class="s-cta">Scan to order here</div>
+      <div class="s-sub">Order on your phone. We'll ring you when it's ready.</div>
+      <div class="s-pay"><span>Card</span><span>Cash at pickup</span></div>
+      <div class="s-url">${esc(base.replace(/^https?:\/\//, ''))}/b/${esc(b.slug)}</div>
+      <div class="s-foot">${LOGO_MARK}<span>Powered by QueueLess</span></div>
+    </article>`).join('');
+}
+$('#filter').onchange = render;
+api('/api/admin/businesses').then(r => { all = r.businesses; base = r.base_url; render(); })
+  .catch(() => { $('#sheet').innerHTML = '<p>Admin sign-in required. <a href="/admin">Sign in</a>, then reopen this page.</p>'; });
+</script>
+</body>
+</html>

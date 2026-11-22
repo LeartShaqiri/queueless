@@ -65,3 +65,32 @@ def check_login(ip: str, username: str, password: str) -> bool:
 def require_admin(request: Request):
     if not valid_token(request.cookies.get(COOKIE)):
         raise HTTPException(401, "Admin sign-in required")
+
+
+BIZ_COOKIE = "ql_biz"
+
+
+def make_biz_token(slug: str) -> str:
+    exp = str(int(time.time()) + SESSION_SECONDS)
+    msg = f"{slug}|{exp}"
+    return f"{msg}.{_sign(msg)}"
+
+
+def biz_allowed(request: Request, slug: str) -> bool:
+    if valid_token(request.cookies.get(COOKIE)):
+        return True
+    token = request.cookies.get(BIZ_COOKIE) or ""
+    if "." not in token:
+        return False
+    msg, sig = token.rsplit(".", 1)
+    tslug, _, exp = msg.partition("|")
+    return hmac.compare_digest(sig, _sign(msg)) and tslug == slug and exp.isdigit() and int(exp) > time.time()
+
+
+def throttle(key: str, ok: bool):
+    """Shared brute-force guard: 5 failures per key per 5 minutes."""
+    now = time.time()
+    recent = [t for t in _fails.get(key, []) if now - t < 300]
+    if len(recent) >= 5:
+        raise HTTPException(429, "Too many attempts. Try again in a few minutes.")
+    _fails[key] = [] if ok else recent + [now]

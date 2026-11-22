@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Orders — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .login { min-height: calc(100vh - 64px); display: grid; place-items: center; padding: 40px 0; }
+  .login form { width: min(360px, 100%); }
+  .switch { appearance: none; display: inline-flex; align-items: center; gap: 9px; border: 0; background: none; cursor: pointer; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink); padding: 0; }
+  .switch .tr { width: 36px; height: 20px; border-radius: 10px; background: var(--rule-2); position: relative; transition: background .15s; }
+  .switch .tr::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch[aria-checked=true] .tr { background: var(--go); }
+  .switch[aria-checked=true] .tr::after { transform: translateX(16px); }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 0; align-items: start; }
+  .col-h { display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px 10px; border-bottom: 1.5px solid var(--ink); margin-bottom: 12px; }
+  .col-h b { font-family: var(--display); font-stretch: 85%; font-size: 22px; }
+  .col-h .n { font: 600 14px var(--mono); }
+  .col { display: grid; gap: 12px; }
+  .oc { background: var(--surface); border: 1px solid var(--rule); padding: 14px; }
+  .oc.new { border-color: var(--signal); box-shadow: inset 4px 0 0 var(--signal); }
+  .oc.late { box-shadow: inset 4px 0 0 var(--stop); }
+  .oc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .oc-top .num { font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 30px; line-height: 1; }
+  .oc-top .code { font: 600 16px var(--mono); letter-spacing: .14em; border: 1.5px solid var(--ink); padding: 3px 7px; background: #fff; }
+  .oc .who { font-weight: 600; margin: 6px 0 2px; }
+  .oc .lines { font: 500 13px/1.6 var(--mono); margin: 8px 0; padding: 8px 0; border-top: 1px dotted var(--rule-2); border-bottom: 1px dotted var(--rule-2); }
+  .oc .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .oc .foot b { font: 600 16px var(--mono); }
+  .oc .btns { display: grid; gap: 6px; }
+  .oc .btns .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .oc .btn { justify-content: center; padding: 10px 12px; font-size: 14px; }
+  .eta-pick { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .eta-pick button { appearance: none; border: 1px solid var(--rule-2); background: #fff; font: 500 12px var(--mono); padding: 7px 9px; cursor: pointer; border-radius: 2px; }
+  .eta-pick button[aria-pressed=true] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .timer { font: 500 12px var(--mono); color: var(--ink-2); }
+  .timer.late { color: var(--stop); font-weight: 600; }
+  .empty-col { padding: 26px 12px; text-align: center; color: var(--muted); font-size: 14px; border: 1px dashed var(--rule-2); }
+  #start { position: fixed; inset: 0; background: rgba(242,239,231,.96); z-index: 20; display: grid; place-items: center; text-align: center; padding: 16px; }
+  @media (max-width: 960px) { .board { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body class="ord">
+<div class="wrap">
+  <header class="bar">
+    <div class="bar-in"><a class="logo" href="/" data-logo>QueueLess <span class="sub" id="bizName">Orders</span></a></div>
+    <div class="bar-in" id="tools" hidden>
+      <button class="switch" id="openSw" role="switch"><span class="tr"></span><span id="openLbl"></span></button>
+      <a class="btn ghost sm" id="viewPage" target="_blank" rel="noopener">Customer page ↗</a>
+      <span class="live" id="live">Live</span>
+      <button class="btn ghost sm" id="logout">Sign out</button>
+    </div>
+  </header>
+
+  <section class="login" id="loginView" hidden>
+    <form id="loginForm" class="stack">
+      <div class="biz-head" id="loginHead"></div>
+      <div class="field" style="margin-top:24px"><label class="eyebrow" for="pin">Business PIN</label>
+        <input type="password" id="pin" inputmode="numeric" autocomplete="current-password" maxlength="8"></div>
+      <div class="mono small" id="loginErr" style="color:var(--stop);min-height:18px;margin-top:10px"></div>
+      <button class="btn solid block" type="submit" style="margin-top:12px">Open order screen <span class="arrow">→</span></button>
+      <p class="small muted" style="margin-top:12px">The PIN is set by the QueueLess admin. Signed-in admins can open any business screen.</p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <div class="board">
+      <section><div class="col-h"><b>New</b><span class="n" id="nNew">0</span></div><div class="col" id="colNew"></div></section>
+      <section><div class="col-h"><b>Preparing</b><span class="n" id="nPrep">0</span></div><div class="col" id="colPrep"></div></section>
+      <section><div class="col-h"><b>Ready for pickup</b><span class="n" id="nReady">0</span></div><div class="col" id="colReady"></div></section>
+    </div>
+    <section class="panel" style="margin-bottom:48px">
+      <div class="panel-h"><span class="eyebrow">Today</span><span class="eyebrow" id="todaySum"></span></div>
+      <table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Payment</th><th>Status</th><th class="r">Total</th></tr></thead><tbody id="history"></tbody></table>
+    </section>
+  </div>
+</div>
+<div id="start" hidden>
+  <div>
+    <div class="biz-head" id="startHead" style="justify-content:center"></div>
+    <p class="muted" style="margin:16px 0 22px">New orders play a sound. Start the screen to turn sound on.</p>
+    <button class="btn solid" id="startBtn">Start order screen <span class="arrow">→</span></button>
+  </div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const slug = location.pathname.split('/').pop();
+let data = null, skew = 0, known = null, started = false;
+const eta = {};
+const money = n => '€' + (+n).toFixed(2);
+const ago = ts => fmtClock(Date.now() / 1000 + skew - ts);
+const PAY_TAG = o => o.payment === 'card' ? `<span class="tag go">Card · paid</span>` : o.paid ? `<span class="tag go">Cash · paid</span>` : `<span class="tag hold">Cash · due</span>`;
+const STATUS = { sent: ['New', 'stop'], accepted: ['Preparing', 'hold'], ready: ['Ready', 'go'], collected: ['Collected', 'go'], declined: ['Declined', 'stop'], cancelled: ['Cancelled by customer', ''] };
+
+function headHTML(b) {
+  return `<span class="biz-mark"><img src="${esc(b.logo)}" alt=""></span><div style="text-align:left"><div class="eyebrow">${esc(b.place || b.sub)}</div><b class="display" style="font-size:32px">${esc(b.name)}</b></div>`;
+}
+
+async function act(id, action, extra) {
+  try { await post(`/api/biz/${slug}/orders/${id}`, { action, ...extra }); }
+  catch (e) { toast(e.message, true); }
+}
+
+function card(o) {
+  const lines = o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join('<br>');
+  let btns = '', timer = '';
+  if (o.status === 'sent') {
+    const sel = eta[o.id] || 10;
+    timer = `<span class="timer">Placed ${ago(o.created_at)} ago</span>`;
+    btns = `<div class="eta-pick" data-eta="${o.id}">${[5, 10, 15, 20, 30, 45].map(m => `<button type="button" data-m="${m}" aria-pressed="${m === sel}">${m} min</button>`).join('')}</div>
+      <div class="row2"><button class="btn solid" data-a="accept" data-id="${o.id}">Accept · ${sel} min</button><button class="btn stop" data-a="decline" data-id="${o.id}">Decline</button></div>`;
+  } else if (o.status === 'accepted') {
+    const left = o.ready_by - (Date.now() / 1000 + skew);
+    timer = `<span class="timer ${left < 0 ? 'late' : ''}" data-due="${o.ready_by}">${left < 0 ? 'Late by ' + fmtClock(-left) : 'Due in ' + fmtClock(left)}</span>`;
+    btns = `<button class="btn signal" data-a="ready" data-id="${o.id}">Mark ready · ring customer</button>`;
+  } else if (o.status === 'ready') {
+    timer = `<span class="timer">Waiting ${ago(o.ready_at)}</span>`;
+    btns = `<div class="row2"><button class="btn ghost" data-a="ring" data-id="${o.id}">Ring again</button>
+      <button class="btn solid" data-a="collect" data-id="${o.id}">${o.payment === 'cash' && !o.paid ? `Cash ${money(o.total)} received` : 'Collected'}</button></div>`;
+  }
+  const late = o.status === 'accepted' && o.ready_by < Date.now() / 1000 + skew;
+  return `<article class="oc ${o.status === 'sent' ? 'new' : ''} ${late ? 'late' : ''}">
+    <div class="oc-top"><span class="num">${esc(o.number)}</span><span class="code" title="Pickup code">${esc(o.pickup_code)}</span></div>
+    <div class="who">${esc(o.customer)}</div>${timer}
+    <div class="lines">${lines}</div>
+    <div class="foot">${PAY_TAG(o)}<b>${money(o.total)}</b></div>
+    <div class="btns">${btns}</div></article>`;
+}
+
+function render() {
+  const b = data.business;
+  $('#bizName').textContent = b.name;
+  document.title = `${b.name} orders — QueueLess`;
+  $('#openSw').setAttribute('aria-checked', b.is_open);
+  $('#openLbl').textContent = b.is_open ? 'Taking orders' : 'Closed';
+  $('#viewPage').href = '/b/' + slug;
+  const by = s => data.orders.filter(o => o.status === s).sort((a, c) => a.created_at - c.created_at);
+  const cols = { colNew: by('sent'), colPrep: by('accepted'), colReady: by('ready') };
+  const empty = { colNew: 'No new orders. They appear here the moment a customer orders.', colPrep: 'Nothing in preparation.', colReady: 'Nothing waiting for pickup.' };
+  for (const [id, list] of Object.entries(cols)) $('#' + id).innerHTML = list.map(card).join('') || `<div class="empty-col">${empty[id]}</div>`;
+  $('#nNew').textContent = cols.colNew.length; $('#nPrep').textContent = cols.colPrep.length; $('#nReady').textContent = cols.colReady.length;
+
+  const today = data.orders.filter(o => !['declined', 'cancelled'].includes(o.status));
+  const total = today.reduce((a, o) => a + +o.total, 0);
+  const cash = today.filter(o => o.payment === 'cash' && o.paid).reduce((a, o) => a + +o.total, 0);
+  $('#todaySum').textContent = `${today.length} orders · ${money(total)} · cash received ${money(cash)}`;
+  $('#history').innerHTML = data.orders.map(o => `<tr><td class="tno">${esc(o.number)} <span class="mono small muted">${esc(o.pickup_code)}</span></td>
+    <td class="small">${esc(o.customer)}</td><td class="small">${o.lines.map(l => `${l.qty}× ${esc(l.name)}`).join(', ')}</td>
+    <td>${PAY_TAG(o)}</td><td><span class="tag dot ${STATUS[o.status][1]}">${STATUS[o.status][0]}</span></td><td class="m r">${money(o.total)}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="empty">No orders yet today.</td></tr>';
+
+  document.querySelectorAll('[data-eta]').forEach(g => g.querySelectorAll('button').forEach(btn => btn.onclick = () => { eta[g.dataset.eta] = +btn.dataset.m; render(); }));
+  document.querySelectorAll('button[data-a]').forEach(btn => btn.onclick = () => {
+    const id = +btn.dataset.id, a = btn.dataset.a;
+    if (a === 'accept') return act(id, 'accept', { eta: eta[id] || 10 });
+    if (a === 'decline') { const r = prompt('Reason for declining (shown to the customer, optional):', 'Sold out'); if (r === null) return; return act(id, 'decline', { reason: r }); }
+    act(id, a);
+  });
+}
+
+function tick() {
+  document.querySelectorAll('[data-due]').forEach(el => {
+    const left = +el.dataset.due - (Date.now() / 1000 + skew);
+    el.textContent = left < 0 ? 'Late by ' + fmtClock(-left) : 'Due in ' + fmtClock(left);
+    el.classList.toggle('late', left < 0);
+  });
+}
+setInterval(tick, 1000);
+
+function alertNew(n) {
+  chime(); setTimeout(chime, 600);
+  let i = 0; clearInterval(window._ft);
+  window._ft = setInterval(() => { document.title = (i++ % 2) ? `(${n}) New order!` : data.business.name + ' orders'; if (i > 12) clearInterval(window._ft); }, 700);
+}
+
+async function refresh() {
+  try {
+    data = await api(`/api/biz/${slug}/orders`);
+  } catch (e) {
+    if (/sign-in/i.test(e.message)) return showLogin();
+    $('#loginView').hidden = false; $('#loginHead').innerHTML = `<b class="display" style="font-size:32px">${esc(e.message)}</b>`; return;
+  }
+  skew = data.server_now - Date.now() / 1000;
+  const newIds = data.orders.filter(o => o.status === 'sent').map(o => o.id);
+  if (known && newIds.some(id => !known.has(id))) alertNew(newIds.length);
+  known = new Set(newIds);
+  $('#loginView').hidden = true; $('#app').hidden = false; $('#tools').hidden = false;
+  if (!started) { $('#start').hidden = false; $('#startHead').innerHTML = headHTML(data.business); }
+  render();
+}
+
+async function showLogin() {
+  $('#app').hidden = true; $('#tools').hidden = true; $('#loginView').hidden = false;
+  try { const b = await api('/api/b/' + slug); $('#loginHead').innerHTML = headHTML(b); } catch (e) { $('#loginHead').innerHTML = '<b class="display" style="font-size:32px">Business not found</b>'; }
+  $('#pin').focus();
+}
+
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault(); $('#loginErr').textContent = '';
+  try { await post(`/api/biz/${slug}/login`, { pin: $('#pin').value }); $('#pin').value = ''; refresh(); }
+  catch (err) { $('#loginErr').textContent = err.message; }
+};
+$('#startBtn').onclick = () => { unlockAudio(); chime(); started = true; $('#start').hidden = true; };
+$('#openSw').onclick = async () => { try { await post(`/api/biz/${slug}/toggle`); } catch (e) { toast(e.message, true); } };
+$('#logout').onclick = async () => { await post(`/api/biz/${slug}/logout`); location.reload(); };
+
+let pending;
+connectWS(msg => {
+  if (msg.type === 'orders' && msg.business !== slug) return;
+  if (msg.type !== 'orders' && msg.type !== 'update') return;
+  clearTimeout(pending); pending = setTimeout(refresh, 100);
+}, liveStatus($('#live')));
+</script>
+</body>
+</html>

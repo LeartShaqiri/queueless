@@ -60,6 +60,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="overview" aria-selected="true">Overview</button>
       <button role="tab" data-tab="tickets">Tickets</button>
+      <button role="tab" data-tab="businesses">Businesses & orders</button>
       <button role="tab" data-tab="counters">Counters</button>
       <button role="tab" data-tab="settings">Services & rules</button>
       <button role="tab" data-tab="data">Data</button>
@@ -121,6 +122,17 @@
           <div class="field"><label class="eyebrow" for="rRecalls">Missed calls before expiry</label><input type="text" inputmode="numeric" id="rRecalls"></div>
           <button class="btn solid" type="submit">Save rules</button>
         </form>
+      </section>
+    </section>
+
+    <section class="pane" data-pane="businesses" hidden>
+      <div class="row spread" style="margin-bottom:14px">
+        <p class="muted small" style="max-width:640px">Each business has its own QR sticker. Customers scan it at the door, order from that business only, pay by card or choose cash at pickup, and get rung when the order is ready.</p>
+        <a class="btn solid sm" href="/admin/stickers" target="_blank" rel="noopener">Print QR stickers ↗</a>
+      </div>
+      <div class="kpis" id="bizKpis"></div>
+      <section class="panel">
+        <table><thead><tr><th>Business</th><th>Status</th><th class="r">Orders today</th><th class="r">Active</th><th class="r">Value</th><th class="r">Cash in</th><th>Staff PIN</th><th class="r">Open</th></tr></thead><tbody id="bizRows"></tbody></table>
       </section>
     </section>
 
@@ -307,11 +319,33 @@ $('#rules').onsubmit = e => {
   act(() => send('PUT', '/api/admin/settings', { no_show_seconds: +$('#rNoShow').value, priority_head_start: Math.round(+$('#rHead').value * 60), max_recalls: +$('#rRecalls').value }), 'Rules saved');
 };
 
+// ---------- businesses ----------
+async function renderBusinesses() {
+  const { businesses } = await adminApi('/api/admin/businesses');
+  const sum = k => businesses.reduce((a, b) => a + (b[k] || 0), 0);
+  const k = (l, v) => `<div class="kpi"><div class="eyebrow">${l}</div><div class="v">${v}</div></div>`;
+  $('#bizKpis').innerHTML = [k('Businesses', businesses.length), k('Open now', businesses.filter(b => b.is_open).length),
+    k('Orders today', sum('orders_today')), k('Active orders', sum('active')), k('Order value', euro(sum('value_today'))), k('Cash received', euro(sum('cash_today')))].join('');
+  $('#bizRows').innerHTML = businesses.map(b => `<tr>
+    <td><div class="inline"><span style="width:44px;height:30px;display:grid;place-items:center;background:#fff;border:1px solid var(--rule);padding:3px;overflow:hidden"><img src="${esc(b.logo)}" alt="" style="max-width:100%;max-height:100%;object-fit:contain"></span>
+      <div><b>${esc(b.name)}</b><div class="small muted">${esc(b.place || b.sub)}</div></div></div>
+      <div class="small" style="margin-top:6px"><a href="/biz/${esc(b.slug)}" target="_blank" rel="noopener">Order screen ↗</a> · <a href="/b/${esc(b.slug)}" target="_blank" rel="noopener">Customer page ↗</a></div></td>
+    <td>${b.is_open ? '<span class="tag dot go">Open</span>' : '<span class="tag dot stop">Closed</span>'}</td>
+    <td class="m r">${b.orders_today}</td><td class="m r">${b.active}</td><td class="m r">${euro(b.value_today)}</td><td class="m r">${euro(b.cash_today)}</td>
+    <td><form class="inline" data-pin="${esc(b.slug)}"><input type="password" inputmode="numeric" maxlength="8" placeholder="${b.has_pin ? '••••  (set)' : 'Not set'}" class="num-in" style="width:110px !important;font:400 15px var(--sans);background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:6px 0;color:var(--ink)" aria-label="New PIN for ${esc(b.name)}"><button class="btn ghost sm" type="submit">${b.has_pin ? 'Change' : 'Set'}</button></form></td>
+    <td class="r"><button class="btn ghost sm" data-btoggle="${esc(b.slug)}">${b.is_open ? 'Close' : 'Open'}</button></td></tr>`).join('');
+  $('#bizRows').querySelectorAll('form[data-pin]').forEach(f => f.onsubmit = e => {
+    e.preventDefault();
+    act(async () => { await send('PUT', `/api/admin/businesses/${f.dataset.pin}/pin`, { pin: f.querySelector('input').value }); f.querySelector('input').value = ''; renderBusinesses(); }, 'PIN saved');
+  });
+  $('#bizRows').querySelectorAll('[data-btoggle]').forEach(b => b.onclick = () => act(() => post(`/api/admin/businesses/${b.dataset.btoggle}/toggle`)));
+}
+
 // ---------- data ----------
 $('#simHist').onclick = () => act(async () => { const r = await post(`/api/simulate/history?days=${+$('#simDays').value || 14}`); toast(`Generated ${r.created.toLocaleString()} tickets`); });
 $('#simRush').onclick = () => act(() => post(`/api/simulate/rush?n=${+$('#rushN').value || 10}`), 'Customers added');
 $('#reset').onclick = () => {
-  if (prompt('Type RESET to delete every ticket.') !== 'RESET') return;
+  if (prompt('Type RESET to delete every ticket and order.') !== 'RESET') return;
   act(() => post('/api/reset'), 'All data cleared');
 };
 
@@ -327,6 +361,7 @@ async function refreshAll() {
     if (tab === 'overview') await renderOverview();
     else if (tab === 'tickets') await renderTickets();
     else if (tab === 'counters') renderCounters();
+    else if (tab === 'businesses' && !document.activeElement.closest('[data-pane=businesses] form')) await renderBusinesses();
     else if (tab === 'settings' && !document.activeElement.closest('[data-pane=settings]')) await renderSettings();
   } catch (e) { /* sign-in handled in adminApi */ }
 }

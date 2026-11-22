@@ -87,6 +87,30 @@ def card_brand(digits: str) -> str:
     return "Card"
 
 
+def check_card(number, expiry, cvv):
+    """Validate card fields. Returns (stored_details, errors); stored_details never holds the PAN or CVV."""
+    errors, out = {}, {}
+    digits = re.sub(r"[\s-]", "", str(number or ""))
+    if not digits:
+        errors["card_number"] = "Required"
+    elif not digits.isdigit() or not 12 <= len(digits) <= 19 or not luhn_ok(digits):
+        errors["card_number"] = "That card number isn't valid"
+    else:
+        out["card_brand"], out["card_last4"] = card_brand(digits), digits[-4:]
+    m = re.fullmatch(r"(\d{1,2})\s*/\s*(\d{2})", str(expiry or "").strip())
+    if not m or not 1 <= int(m.group(1)) <= 12:
+        errors["card_expiry"] = "Use MM/YY"
+    elif (2000 + int(m.group(2)), int(m.group(1))) < (date.today().year, date.today().month):
+        errors["card_expiry"] = "This card has expired"
+    else:
+        out["card_expiry"] = f"{int(m.group(1)):02d}/{m.group(2)}"
+    need = 4 if out.get("card_brand") == "Amex" else 3
+    cvv = str(cvv or "").strip()
+    if not (cvv.isdigit() and len(cvv) == need):
+        errors["card_cvv"] = f"Enter the {need}-digit code on your card"
+    return out, errors
+
+
 def _dep_key(f, out):
     return "|".join(out.get(d, "") for d in f.get("depends", []))
 

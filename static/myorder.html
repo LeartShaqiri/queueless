@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFE7">
+<title>Your order — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .stub { position: relative; margin: 24px 0 0; background: var(--surface); border: 1px solid var(--rule); padding: 20px 22px; overflow: hidden; transition: background .3s, color .3s; }
+  .perf { position: relative; border-top: 1.5px dashed var(--rule-2); margin: 20px -22px; }
+  .perf::before, .perf::after { content: ""; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--paper); }
+  .perf::before { left: -12px; } .perf::after { right: -12px; }
+  .code-lbl { margin-top: 18px; }
+  .code { font: 600 clamp(64px, 22vw, 96px)/1 var(--mono); letter-spacing: .12em; margin: 6px 0 4px; }
+  .headline { font-family: var(--display); font-stretch: 85%; font-weight: 750; font-size: 28px; line-height: 1.08; margin-bottom: 14px; }
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0 8px; }
+  .steps div { border-top: 4px solid var(--rule); padding-top: 8px; font: 500 10.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .steps div.done { border-color: var(--ink); color: var(--ink); }
+  .steps div.now { border-color: var(--signal); color: var(--signal-dark); }
+  .eta { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin: 12px 0; }
+  .eta b { font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 32px; }
+  .payline { margin-top: 14px; padding: 12px 14px; border: 1.5px solid var(--ink); background: #fff; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+  .payline.cash { border-color: var(--hold); background: var(--hold-tint); }
+  .payline b { font: 600 18px var(--mono); }
+  .stub.ready { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .stub.ready .eyebrow, .stub.ready .muted { color: rgba(255,255,255,.8); }
+  .stub.ready .perf { border-color: rgba(255,255,255,.45); }
+  .stub.ready .steps div.done { border-color: #fff; color: #fff; }
+  .stub.ready .payline { color: var(--ink); }
+  .stub.ready .rcpt dt { color: rgba(255,255,255,.75); }
+  .stub.ready .rcpt > div { border-color: rgba(255,255,255,.35); }
+  .stamp { position: absolute; top: 74px; right: 16px; transform: rotate(-9deg); border: 3px solid currentColor; padding: 6px 12px 5px; font: 600 20px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; opacity: .9; }
+  .stamp::after { content: ""; position: absolute; inset: 3px; border: 1px solid currentColor; }
+  .stamp.collected { color: var(--go); } .stamp.declined { color: var(--stop); } .stamp.cancelled { color: var(--muted); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .actions .btn { justify-content: center; }
+  @keyframes shake { 0%, 100% { transform: translate(0,0) rotate(0); } 10%, 50%, 90% { transform: translate(-10px,0) rotate(-1.5deg); } 30%, 70% { transform: translate(10px,0) rotate(1.5deg); } }
+  .shake { animation: shake .55s cubic-bezier(.36,.07,.19,.97) 4; }
+  .ring-back { position: fixed; inset: 0; z-index: 50; background: rgba(25,23,19,.72); display: grid; place-items: center; padding: 16px; }
+  .ring-card { width: min(440px, 100%); background: var(--paper); border-top: 6px solid var(--signal); padding: 24px 22px 20px; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+  .ring-card .big { font-family: var(--display); font-stretch: 78%; font-weight: 800; font-size: 44px; line-height: .95; margin: 10px 0 14px; }
+  .ring-card .codebox { display: flex; justify-content: space-between; align-items: center; border: 1.5px solid var(--ink); background: #fff; padding: 12px 14px; margin: 14px 0; }
+  .ring-card .codebox b { font: 600 30px/1 var(--mono); letter-spacing: .16em; }
+  .ring { display: inline-flex; align-items: center; gap: 8px; font: 600 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--signal-dark); }
+  .ring::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--signal); animation: ping 1s ease-out infinite; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(216,67,31,.6); } 100% { box-shadow: 0 0 0 12px rgba(216,67,31,0); } }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <header class="bar">
+    <a class="logo" href="/" data-logo>QueueLess</a>
+    <span class="live" id="live">Live</span>
+  </header>
+  <div id="stub" class="stub"><div class="eyebrow">Loading order…</div></div>
+  <div class="actions" id="actions">
+    <button class="btn ghost" id="alerts">Turn on alerts</button>
+    <button class="btn stop" id="cancel">Cancel order</button>
+  </div>
+  <div style="height:56px"></div>
+</div>
+
+<div class="ring-back" id="ringPop" hidden role="alertdialog" aria-modal="true" aria-labelledby="ringTitle">
+  <div class="ring-card" id="ringCard">
+    <span class="ring">Your order is ready</span>
+    <div class="big" id="ringTitle">Come and collect your order.</div>
+    <p class="muted" id="ringText"></p>
+    <div class="codebox"><span class="eyebrow">Show this code</span><b id="ringCode"></b></div>
+    <p id="ringPay" style="font-weight:600;margin-bottom:16px"></p>
+    <button class="btn signal block" id="ringOk" style="justify-content:center">On my way <span class="arrow">→</span></button>
+  </div>
+</div>
+
+<script src="/static/common.js"></script>
+<script>
+const token = location.pathname.split('/').pop();
+let o = null, skew = 0, alertsOn = false;
+let seenRing = +(storage('ql_ring_' + token) || 0);
+const baseTitle = document.title;
+const clock = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const STEPS = ['sent', 'accepted', 'ready', 'collected'];
+const STEP_LABEL = ['Sent', 'Accepted', 'Ready', 'Collected'];
+
+function payLine() {
+  if (o.payment === 'card') {
+    const c = o.card || {};
+    return `<div class="payline"><span><span class="eyebrow">Paid by card</span><br>${esc(c.card_brand || 'Card')} •••• ${esc(c.card_last4 || '')}</span><b>€${esc(o.total)}</b></div>`;
+  }
+  if (o.paid) return `<div class="payline"><span><span class="eyebrow">Paid in cash</span><br>at pickup</span><b>€${esc(o.total)}</b></div>`;
+  return `<div class="payline cash"><span><span class="eyebrow" style="color:var(--hold)">Cash at pickup</span><br>Pay when you collect</span><b>€${esc(o.total)}</b></div>`;
+}
+
+function render() {
+  const s = $('#stub');
+  const b = o.business_info;
+  const closed = ['collected', 'declined', 'cancelled'].includes(o.status);
+  s.className = 'stub' + (o.status === 'ready' ? ' ready' : '');
+  $('#cancel').hidden = o.status !== 'sent';
+  $('#alerts').hidden = alertsOn || closed;
+  $('#actions').style.display = ($('#cancel').hidden && $('#alerts').hidden) ? 'none' : '';
+  $('#actions').style.gridTemplateColumns = ($('#cancel').hidden || $('#alerts').hidden) ? '1fr' : '1fr 1fr';
+
+  const idx = STEPS.indexOf(o.status);
+  const steps = closed && o.status !== 'collected' ? '' : `<div class="steps">${STEP_LABEL.map((l, i) => `<div class="${i < idx || (o.status === 'collected' && i === idx) ? 'done' : i === idx ? 'now' : ''}">${l}</div>`).join('')}</div>`;
+  let head = '', extra = '';
+  if (o.status === 'sent') {
+    head = 'Order sent. Waiting for the business to accept it.';
+    extra = o.ahead ? `<p class="muted small">${o.ahead} order${o.ahead === 1 ? '' : 's'} ahead of yours.</p>` : '';
+  } else if (o.status === 'accepted') {
+    head = 'Accepted — they\'re preparing it now.';
+    extra = `<div class="eta"><span class="eyebrow">Ready in about</span><b id="eta"></b></div><p class="muted small">You can step away. Your phone will ring when it's ready.</p>`;
+  } else if (o.status === 'ready') {
+    head = 'Ready! Come to the counter.';
+    extra = `<p class="small">Show the code above${o.payment === 'cash' && !o.paid ? ` and pay €${esc(o.total)} in cash` : ''}.</p>`;
+  } else if (o.status === 'collected') {
+    head = 'Collected. Enjoy!';
+  } else if (o.status === 'declined') {
+    head = 'Sorry — the business couldn\'t take this order.';
+    extra = `${o.decline_reason ? `<p class="small">Reason: ${esc(o.decline_reason)}</p>` : ''}${o.payment === 'card' ? '<p class="muted small">Your card was not charged.</p>' : ''}
+      <a class="btn solid block" href="/b/${esc(b.slug)}" style="margin-top:14px">Order again <span class="arrow">→</span></a>`;
+  } else if (o.status === 'cancelled') {
+    head = 'You cancelled this order.';
+    extra = `<a class="btn solid block" href="/b/${esc(b.slug)}" style="margin-top:14px">Start a new order <span class="arrow">→</span></a>`;
+  }
+  const lines = o.lines.map(l => `${l.qty}× ${l.name}`).join('\n');
+  s.innerHTML = `
+    <div class="biz-head"><span class="biz-mark" style="width:52px;height:52px;padding:5px"><img src="${esc(b.logo)}" alt=""></span>
+      <div><b style="font-size:17px">${esc(b.name)}</b><div class="eyebrow">${esc(b.place || b.sub || '')}</div></div></div>
+    <div class="eyebrow code-lbl">Order ${esc(o.number)} · pickup code</div>
+    <div class="code">${esc(o.pickup_code)}</div>
+    <div class="muted small">${esc(o.customer)} · placed ${clock(o.created_at)}</div>
+    <div class="perf"></div>
+    <div class="headline">${head}</div>
+    ${steps}${extra}
+    <div style="margin-top:16px"><div class="eyebrow">Your order</div>${detailRows([{ label: 'Items', value: lines, lines: true }, { label: 'Total', value: '€' + o.total, strong: true }])}</div>
+    ${o.status === 'declined' || o.status === 'cancelled' ? '' : payLine()}
+    ${closed ? `<div class="stamp ${o.status}">${{ collected: 'Collected', declined: 'Declined', cancelled: 'Void' }[o.status]}</div>` : ''}`;
+  tickEta();
+
+  if (o.status === 'ready' && o.last_ring_at && o.last_ring_at > seenRing) {
+    seenRing = o.last_ring_at;
+    storage('ql_ring_' + token, String(seenRing));
+    setTimeout(ring, 0);
+  }
+  if (o.status !== 'ready') $('#ringPop').hidden = true;
+}
+
+function ring() {
+  $('#ringText').textContent = `${o.business_info.name} · order ${o.number} for ${o.customer}.`;
+  $('#ringCode').textContent = o.pickup_code;
+  $('#ringPay').textContent = o.payment === 'cash' && !o.paid ? `Please pay €${o.total} in cash at the counter.` : 'Already paid by card.';
+  $('#ringPop').hidden = false;
+  [$('#ringCard'), $('#stub')].forEach(el => { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); });
+  if (navigator.vibrate) navigator.vibrate([500, 150, 500, 150, 500, 150, 900]);
+  chime(); setTimeout(chime, 900);
+  speak(`Order ${o.number.replace('#', 'number ')} is ready. Please collect it from ${o.business_info.name}.`);
+  try { if (window.Notification && Notification.permission === 'granted') new Notification('Your order is ready', { body: `${o.business_info.name}: show code ${o.pickup_code}`, requireInteraction: true }); } catch (e) {}
+  let i = 0; clearInterval(window._ft);
+  window._ft = setInterval(() => { document.title = (i++ % 2) ? 'Order ready!' : baseTitle; if (i > 30) { clearInterval(window._ft); document.title = baseTitle; } }, 700);
+}
+$('#ringOk').onclick = () => { $('#ringPop').hidden = true; clearInterval(window._ft); document.title = baseTitle; };
+
+function tickEta() {
+  const el = $('#eta');
+  if (!el || !o || !o.ready_by) return;
+  const left = o.ready_by - (Date.now() / 1000 + skew);
+  el.textContent = left > 60 ? `${Math.ceil(left / 60)} min` : left > 0 ? 'under a minute' : 'any moment';
+}
+setInterval(tickEta, 5000);
+
+async function refresh() {
+  try {
+    o = await api('/api/orders/' + token);
+    skew = o.server_now - Date.now() / 1000;
+    render();
+  } catch (e) {
+    $('#stub').innerHTML = '<div class="headline">We can\'t find this order.</div>';
+    $('#actions').style.display = 'none';
+  }
+}
+
+$('#alerts').onclick = async () => {
+  unlockAudio(); chime(); alertsOn = true;
+  if (navigator.vibrate) navigator.vibrate(100);
+  try { if (window.Notification && Notification.permission === 'default') await Notification.requestPermission(); } catch (e) {}
+  toast('Alerts on. Keep this tab open.');
+  render();
+};
+$('#cancel').onclick = async () => {
+  if (!confirm('Cancel this order?')) return;
+  try { await post(`/api/orders/${token}/cancel`); } catch (e) { toast(e.message, true); }
+};
+
+let pending;
+connectWS(msg => {
+  if (msg.type === 'orders' && o && msg.business !== o.business) return;
+  clearTimeout(pending); pending = setTimeout(refresh, 100);
+}, liveStatus($('#live')));
+</script>
+</body>
+</html>

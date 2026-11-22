@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFE7">
+<title>Order — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .hero { padding: 28px 0 22px; border-bottom: 1.5px solid var(--ink); margin-bottom: 26px; }
+  .hero h1 { font-size: 46px; }
+  .closed { margin-bottom: 20px; padding: 14px 16px; background: var(--ink); color: var(--paper); font: 500 13px/1.4 var(--mono); }
+  .note { font-size: 13px; color: var(--muted); margin-top: 10px; }
+</style>
+</head>
+<body class="ord">
+<div class="wrap narrow">
+  <header class="bar">
+    <a class="logo" href="/" data-logo>QueueLess</a>
+    <span class="live" id="live">Live</span>
+  </header>
+
+  <section class="hero" id="hero"><div class="eyebrow">Loading…</div></section>
+  <div class="closed" id="closed" hidden></div>
+  <a id="active" class="btn solid block" hidden style="margin-bottom:20px"></a>
+
+  <form id="f" novalidate hidden>
+    <div class="step"><span class="n">01</span><span class="eyebrow">Choose what you'd like</span></div>
+    <div class="field" data-key="items"><div class="menu" id="menu"></div><div class="err"></div></div>
+
+    <div class="step" style="margin-top:32px"><span class="n">02</span><span class="eyebrow">Your name</span></div>
+    <div class="field" data-key="name">
+      <input type="text" id="name" maxlength="60" autocomplete="name" placeholder="So we know whose order it is">
+      <div class="err"></div>
+    </div>
+
+    <div class="step" style="margin-top:32px"><span class="n">03</span><span class="eyebrow">How will you pay?</span></div>
+    <div class="field" data-key="payment">
+      <div class="pay-grid">
+        <label class="pay-opt"><input type="radio" name="payment" value="card">
+          <span class="pay-tile">
+            <svg width="30" height="22" viewBox="0 0 30 22" aria-hidden="true"><rect x="1" y="1" width="28" height="20" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="1" y="6" width="28" height="3.5" fill="currentColor"/><rect x="5" y="14" width="8" height="2" fill="currentColor"/></svg>
+            <b>Pay now by card</b><span>Paid when you order. Just collect when it's ready.</span>
+          </span></label>
+        <label class="pay-opt"><input type="radio" name="payment" value="cash">
+          <span class="pay-tile">
+            <svg width="30" height="22" viewBox="0 0 30 22" aria-hidden="true"><rect x="1" y="3" width="28" height="16" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="15" cy="11" r="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 7v8M25 7v8" stroke="currentColor" stroke-width="1.6"/></svg>
+            <b>Pay cash at pickup</b><span>Pay at the counter when you collect your order.</span>
+          </span></label>
+      </div>
+      <div class="err"></div>
+    </div>
+
+    <div class="card-box" id="cardBox" hidden>
+      <div class="card-head"><span class="eyebrow">Card details</span><span class="brand" id="brand"></span></div>
+      <div class="field" data-key="card_number"><label class="eyebrow" for="cn">Card number</label>
+        <input type="text" id="cn" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23"><div class="err"></div></div>
+      <div class="field half" data-key="card_expiry"><label class="eyebrow" for="ce">Expiry</label>
+        <input type="text" id="ce" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5"><div class="err"></div></div>
+      <div class="field half" data-key="card_cvv"><label class="eyebrow" for="cv">CVV</label>
+        <input type="password" id="cv" inputmode="numeric" autocomplete="cc-csc" placeholder="•••" maxlength="4" style="letter-spacing:.2em"><div class="err"></div></div>
+      <div class="lock"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path d="M2 6V4a4 4 0 1 1 8 0v2h1v8H1V6h1zm1.5 0h5V4a2.5 2.5 0 0 0-5 0v2z" fill="currentColor"/></svg>
+        <span>Checked on the spot, then discarded. We keep only the brand and last four digits — never the full number or the CVV.</span></div>
+    </div>
+
+    <div class="checkout">
+      <div class="sum" id="sum" hidden><span id="sumItems"></span><b id="sumTotal"></b></div>
+      <button class="btn solid block" id="go" type="submit"><span id="goLabel">Place order</span> <span class="arrow">→</span></button>
+    </div>
+    <p class="note">The business confirms your order and tells you when it'll be ready. Your phone rings when it's time to collect.</p>
+  </form>
+  <div style="height:56px"></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const slug = location.pathname.split('/').pop();
+let biz = null;
+const cart = {};
+const money = n => '€' + n.toFixed(2);
+
+const prev = storage('ql_order_' + slug);
+if (prev) api('/api/orders/' + prev).then(o => {
+  if (['sent', 'accepted', 'ready'].includes(o.status)) {
+    const a = $('#active'); a.hidden = false; a.href = '/o/' + prev;
+    a.innerHTML = `<span>You have an order in progress · ${esc(o.number)}</span><span class="arrow">→</span>`;
+  }
+}).catch(() => storage('ql_order_' + slug, null));
+
+function renderHero() {
+  document.title = `${biz.name} — order`;
+  $('#hero').innerHTML = `<div class="biz-head"><span class="biz-mark"><img src="${esc(biz.logo)}" alt=""></span>
+    <div><div class="eyebrow">${esc(biz.place || biz.sub)}${biz.place ? ' · ' + esc(biz.sub) : ''}</div><h1 class="display" style="margin-top:6px">${esc(biz.name)}</h1>
+    <span class="tag dot ${biz.is_open ? 'go' : 'stop'}" style="margin-top:8px">${biz.is_open ? 'Taking orders' : 'Closed'}</span></div></div>`;
+  $('#closed').hidden = biz.is_open;
+  $('#closed').textContent = `${biz.name} isn't taking orders right now. Please check back soon or ask at the counter.`;
+  $('#f').hidden = !biz.is_open;
+}
+
+function renderMenu() {
+  let html = '', section = null;
+  for (const it of biz.items) {
+    if (it.section !== section) { section = it.section; html += `<div class="menu-sec">${esc(section)}</div>`; }
+    const q = cart[it.id] || 0;
+    html += `<div class="mi ${q ? 'on' : ''}" data-id="${esc(it.id)}">
+      <div><div class="mi-n">${esc(it.name)}</div>${it.desc ? `<div class="mi-d">${esc(it.desc)}</div>` : ''}</div>
+      <div class="mi-p">€${esc(it.price)}</div>
+      <div class="qty ${q ? '' : 'zero'}"><button type="button" class="dec" aria-label="Remove one ${esc(it.name)}">−</button><span>${q}</span><button type="button" class="inc" aria-label="Add ${esc(it.name)}">+</button></div></div>`;
+  }
+  $('#menu').innerHTML = html;
+  $('#menu').querySelectorAll('.mi').forEach(row => {
+    const change = d => {
+      const q = Math.max(0, Math.min(20, (cart[row.dataset.id] || 0) + d));
+      if (q) cart[row.dataset.id] = q; else delete cart[row.dataset.id];
+      row.classList.toggle('on', !!q);
+      row.querySelector('.qty').classList.toggle('zero', !q);
+      row.querySelector('.qty span').textContent = q;
+      clearErr('items'); updateSummary();
+    };
+    row.querySelector('.inc').onclick = () => change(1);
+    row.querySelector('.dec').onclick = () => change(-1);
+  });
+}
+
+function updateSummary() {
+  let n = 0, total = 0;
+  for (const it of biz.items) if (cart[it.id]) { n += cart[it.id]; total += cart[it.id] * +it.price; }
+  const pay = document.querySelector('input[name=payment]:checked')?.value;
+  $('#sum').hidden = !n;
+  $('#sumItems').textContent = `${n} item${n === 1 ? '' : 's'}${pay ? ' · ' + (pay === 'card' ? 'card' : 'cash at pickup') : ''}`;
+  $('#sumTotal').textContent = money(total);
+  $('#goLabel').textContent = n ? (pay === 'cash' ? `Place order · pay ${money(total)} at pickup` : `Place order · ${money(total)}`) : 'Place order';
+}
+
+function clearErr(key) {
+  const f = document.querySelector(`.field[data-key="${key}"]`);
+  if (f) { f.classList.remove('invalid'); f.querySelector('.err').textContent = ''; }
+}
+function showErrors(errs) {
+  let first = null;
+  for (const [k, msg] of Object.entries(errs)) {
+    const f = document.querySelector(`.field[data-key="${k}"]`);
+    if (!f) { toast(msg, true); continue; }
+    f.classList.add('invalid'); f.querySelector('.err').textContent = msg;
+    first = first || f;
+  }
+  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.querySelectorAll('input[name=payment]').forEach(r => r.onchange = () => {
+  $('#cardBox').hidden = r.value !== 'card' || !r.checked;
+  clearErr('payment'); updateSummary();
+});
+$('#name').oninput = () => clearErr('name');
+$('#cn').oninput = () => {
+  const d = $('#cn').value.replace(/\D/g, '').slice(0, 19);
+  $('#cn').value = d.replace(/(.{4})/g, '$1 ').trim();
+  $('#brand').textContent = d.startsWith('4') ? 'Visa' : /^(5[1-5]|2[2-7])/.test(d) ? 'Mastercard' : /^3[47]/.test(d) ? 'Amex' : '';
+  clearErr('card_number');
+};
+$('#ce').oninput = e => {
+  let d = $('#ce').value.replace(/\D/g, '').slice(0, 4);
+  if (d.length >= 3 || (d.length === 2 && e.inputType !== 'deleteContentBackward')) d = d.slice(0, 2) + '/' + d.slice(2);
+  $('#ce').value = d; clearErr('card_expiry');
+};
+$('#cv').oninput = () => { $('#cv').value = $('#cv').value.replace(/\D/g, ''); clearErr('card_cvv'); };
+
+function luhn(d) {
+  let s = 0;
+  [...d].reverse().forEach((c, i) => { let n = +c; if (i % 2) { n *= 2; if (n > 9) n -= 9; } s += n; });
+  return d.length >= 12 && s % 10 === 0;
+}
+
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const payment = document.querySelector('input[name=payment]:checked')?.value || '';
+  const body = { name: $('#name').value.trim(), items: { ...cart }, payment };
+  const local = {};
+  if (!Object.keys(cart).length) local.items = 'Add at least one item';
+  if (!body.name) local.name = 'Required';
+  if (!payment) local.payment = "Choose how you'll pay";
+  if (payment === 'card') {
+    Object.assign(body, { card_number: $('#cn').value, card_expiry: $('#ce').value, card_cvv: $('#cv').value });
+    const d = body.card_number.replace(/\D/g, '');
+    if (!luhn(d)) local.card_number = "That card number isn't valid";
+    if (!/^\d{2}\/\d{2}$/.test(body.card_expiry)) local.card_expiry = 'Use MM/YY';
+    const need = /^3[47]/.test(d) ? 4 : 3;
+    if (!new RegExp(`^\\d{${need}}$`).test(body.card_cvv)) local.card_cvv = `Enter the ${need}-digit code on your card`;
+  }
+  if (Object.keys(local).length) return showErrors(local);
+  $('#go').disabled = true;
+  try {
+    const r = await post(`/api/b/${slug}/orders`, body);
+    storage('ql_order_' + slug, r.token);
+    location.href = '/o/' + r.token;
+  } catch (err) {
+    if (err.fields) showErrors(err.fields); else toast(err.message, true);
+    $('#go').disabled = false;
+  }
+};
+
+async function load() {
+  try { biz = await api('/api/b/' + slug); }
+  catch (e) { $('#hero').innerHTML = '<h1 class="display">Business not found</h1><p class="muted" style="margin-top:10px">This QR code doesn\'t match a business. Ask the staff for help.</p>'; return; }
+  const first = !$('#menu').children.length;
+  renderHero();
+  if (first) { renderMenu(); updateSummary(); }
+}
+
+let pending;
+connectWS(msg => {
+  if (msg.type === 'orders' && msg.business !== slug) return;
+  clearTimeout(pending); pending = setTimeout(load, 150);
+}, liveStatus($('#live')));
+</script>
+</body>
+</html>
