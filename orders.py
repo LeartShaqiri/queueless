@@ -55,6 +55,10 @@ def init():
     if "counter_name" not in {r["name"] for r in core.q("PRAGMA table_info(orders)")}:
         conn.execute("ALTER TABLE orders ADD COLUMN counter_name TEXT")
     conn.executemany("INSERT OR IGNORE INTO businesses(slug) VALUES (?)", [(s,) for s in BUSINESSES])
+    import auth
+    if re.fullmatch(r"\d{4,8}", auth.DEMO_PIN or ""):
+        for r in core.q("SELECT slug FROM businesses WHERE pin IS NULL OR pin = ''"):
+            conn.execute("UPDATE businesses SET pin=? WHERE slug=?", (_hash_pin(auth.DEMO_PIN), r["slug"]))
     have = {r["business"] for r in core.q("SELECT DISTINCT business FROM biz_counters")}
     for slug, b in BUSINESSES.items():
         if slug not in have:

@@ -6,133 +6,52 @@
 <title>Take a number — QueueLess</title>
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  h1 { font-size: 52px; margin: 36px 0 24px; }
-  .strip { display: grid; grid-template-columns: 1fr 1fr; border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--rule); margin-bottom: 28px; }
-  .strip > div { padding: 14px 0; }
-  .strip > div + div { padding-left: 18px; border-left: 1px solid var(--rule); }
-  .strip b { display: block; font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 30px; line-height: 1.1; margin-top: 4px; }
-  .step { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
-  .step .n { font: 500 11.5px var(--mono); color: var(--signal); }
-  .svc { display: block; cursor: pointer; }
-  .svc input { position: absolute; opacity: 0; pointer-events: none; }
-  .svc-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 16px; align-items: center; padding: 14px 14px 14px 0; border-bottom: 1px solid var(--rule); transition: background .12s, padding .12s; }
-  .svc:first-child .svc-row { border-top: 1px solid var(--rule); }
-  .code { width: 52px; height: 52px; display: grid; place-items: center; border: 1.5px solid var(--ink); font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 28px; transition: background .12s, color .12s, border-color .12s; }
-  .svc-row .nm { font-weight: 650; font-size: 17px; line-height: 1.25; }
-  .svc-row .ds { color: var(--muted); font-size: 14px; }
-  .svc-row .tm { font-family: var(--mono); font-size: 12px; color: var(--ink-2); text-align: right; white-space: nowrap; }
-  .svc:hover .svc-row { background: var(--surface); }
-  .svc input:checked + .svc-row { background: var(--surface); padding-left: 12px; }
-  .svc input:checked + .svc-row .code { background: var(--signal); border-color: var(--signal); color: #fff; }
-  .svc input:focus-visible + .svc-row { outline: 2px solid var(--signal); outline-offset: -2px; }
-
-  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 18px; }
-  .fgrid .field { grid-column: 1 / -1; }
-  .fgrid .field.half { grid-column: span 1; }
-
-  .logo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
-  .logo-opt { cursor: pointer; display: block; }
-  .logo-opt input { position: absolute; opacity: 0; pointer-events: none; }
-  .logo-tile { position: relative; display: flex; flex-direction: column; height: 100%; border: 1px solid var(--rule-2); background: var(--surface); transition: border-color .12s, box-shadow .12s; }
-  .logo-img { display: grid; place-items: center; height: 88px; padding: 12px; background: #fff; border-bottom: 1px solid var(--rule); }
-  .logo-img img { max-width: 100%; max-height: 62px; object-fit: contain; display: block; }
-  .logo-nm { padding: 9px 10px 1px; font-weight: 650; font-size: 14px; line-height: 1.2; }
-  .logo-sub { padding: 0 10px 9px; font-size: 12px; color: var(--muted); line-height: 1.3; }
-  .logo-opt:hover .logo-tile { border-color: var(--ink); }
-  .logo-opt input:checked + .logo-tile { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
-  .logo-opt input:checked + .logo-tile::after { content: ""; position: absolute; top: -1px; right: -1px; width: 22px; height: 22px; background: var(--signal)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='10'%3E%3Cpath d='M1 5l3.5 3.5L11 1.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") no-repeat center; }
-  .logo-opt input:focus-visible + .logo-tile { outline: 2px solid var(--signal); outline-offset: 2px; }
-  .field.invalid .logo-tile, .field.invalid .menu { border-color: var(--stop); }
-  .dep-empty { margin-top: 10px; padding: 18px; border: 1px dashed var(--rule-2); color: var(--muted); font-size: 14px; text-align: center; }
-
-  .menu { margin-top: 10px; border: 1px solid var(--rule); background: var(--surface); }
-  .menu-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
-  .menu-head img { width: 44px; height: 44px; object-fit: contain; background: #fff; border: 1px solid var(--rule); padding: 3px; }
-  .menu-head b { font-family: var(--display); font-stretch: 85%; font-size: 20px; }
-  .menu-sec { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 16px 14px 6px; }
-  .mi { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--rule); transition: background .12s; }
-  .menu-sec + .mi { border-top: 0; }
-  .mi.on { background: #fff; box-shadow: inset 3px 0 0 var(--signal); }
-  .mi-n { font-weight: 600; font-size: 15px; line-height: 1.25; }
-  .mi-d { font-size: 12.5px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
-  .mi-p { font: 500 13px var(--mono); white-space: nowrap; }
-  .qty { display: inline-flex; align-items: center; border: 1.5px solid var(--ink); border-radius: 2px; height: 34px; }
-  .qty button { appearance: none; border: 0; background: transparent; width: 32px; height: 100%; font: 600 17px/1 var(--sans); cursor: pointer; color: var(--ink); }
-  .qty button:hover { background: var(--ink); color: var(--paper); }
-  .qty span { min-width: 22px; text-align: center; font: 600 14px var(--mono); }
-  .qty.zero { border-color: var(--rule-2); }
-  .qty.zero span, .qty.zero .dec { display: none; }
-  .qty.zero .inc { width: auto; padding: 0 12px; font-size: 13px; }
-  .qty.zero .inc::after { content: " Add"; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-
-  .card-box { grid-column: 1 / -1; border: 1px solid var(--rule); background: var(--surface); padding: 16px 16px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .card-box .field { grid-column: 1 / -1; }
-  .card-box .field.half { grid-column: span 1; }
-  .card-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; }
-  .brand { font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
-  .lock { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); grid-column: 1 / -1; }
-  .lock svg { flex: none; margin-top: 2px; }
-  .money { position: relative; }
-  .money span { position: absolute; left: 0; bottom: 11px; font-size: 17px; color: var(--ink-2); }
-  .money input { padding-left: 16px; }
-
-  .checkout { position: sticky; bottom: 0; z-index: 5; margin: 28px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1.5px solid var(--ink); }
-  .checkout .sum { display: flex; justify-content: space-between; font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-2); margin-bottom: 10px; }
-  .checkout .sum b { color: var(--ink); font-size: 14px; }
+  .top { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; padding: 36px 0 8px; }
+  .top h1 { font-size: clamp(44px, 7vw, 72px); }
+  .strip { display: grid; grid-template-columns: auto auto; border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--rule); }
+  .strip > div { padding: 10px 22px 12px 0; }
+  .strip > div + div { padding-left: 22px; border-left: 1px solid var(--rule); }
+  .strip b { display: block; font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 28px; line-height: 1.1; margin-top: 2px; }
+  .jump { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 22px; }
+  .jump a { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; text-decoration: none; color: var(--ink); border: 1.5px solid var(--ink); padding: 8px 12px; border-radius: 2px; }
+  .jump a:hover { background: var(--ink); color: var(--paper); }
   .active { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; margin-top: 20px; background: var(--ink); color: var(--paper); text-decoration: none; }
   .active b { font-family: var(--display); font-stretch: 75%; font-size: 22px; }
-  .quiet td { padding: 10px 0; }
-  @media (max-width: 380px) { .fgrid .field.half { grid-column: 1 / -1; } .logo-img { height: 72px; padding: 8px; } .logo-nm { font-size: 13px; } }
+  @media (max-width: 640px) { .top { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<div class="wrap narrow">
+<div class="wrap">
   <header class="bar">
     <a class="logo" href="/" data-logo>QueueLess</a>
-    <span class="live" id="live">Live</span>
+    <nav class="nav"><a href="#food">Food</a><a href="#shopping">Shopping</a><a href="#payments">Payments</a><a href="#services">Services</a></nav>
   </header>
 
   <a id="active" class="active" hidden></a>
 
-  <h1 class="display">What brings<br>you in today?</h1>
-
-  <div class="strip">
-    <div><span class="eyebrow">Current wait</span><b id="wait">—</b></div>
-    <div><span class="eyebrow">In line now</span><b id="count">—</b></div>
-  </div>
-
-  <form id="f" novalidate>
-    <div class="step"><span class="n">01</span><span class="eyebrow">Choose a category</span></div>
-    <div id="services"></div>
-
-    <div class="step" style="margin-top:36px"><span class="n">02</span><span class="eyebrow" id="detailsLabel">Your details</span></div>
-    <div class="fgrid" id="fields"></div>
-
-    <label class="check" style="margin-top:26px"><input type="checkbox" id="prio">
-      <span>I need priority assistance — for example due to age, pregnancy or a disability.</span></label>
-
-    <div class="checkout">
-      <div class="sum" id="sum" hidden><span id="sumItems"></span><b id="sumTotal"></b></div>
-      <button class="btn solid block" id="go" type="submit"><span id="goLabel">Take a number</span> <span class="arrow">→</span></button>
+  <section class="top">
+    <div>
+      <div class="eyebrow">Take a number</div>
+      <h1 class="display" style="margin-top:8px">What brings you in today?</h1>
+      <p class="muted" style="margin-top:10px;max-width:560px">Tap a place, or scan its QR code with your phone. Each one opens its own page.</p>
     </div>
-    <p class="small muted" style="margin-top:12px">No app, no account. Keep this tab open and we'll tell you when to come back.</p>
-  </form>
-
-  <section id="bestCard" hidden style="margin:44px 0 0">
-    <div class="eyebrow" style="margin-bottom:8px">Quieter later today</div>
-    <table class="quiet"><tbody id="best"></tbody></table>
+    <div class="strip">
+      <div><span class="eyebrow">Queue wait</span><b id="wait">—</b></div>
+      <div><span class="eyebrow">In line</span><b id="count">—</b></div>
+    </div>
   </section>
-  <div style="height:56px"></div>
+
+  <div id="sections"></div>
+  <div style="height:64px"></div>
 </div>
 <script src="/static/common.js"></script>
 <script>
-let FORMS = {}, services = [], current = null;
-const values = {}, carts = {};
-const LOCK = '<svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><path d="M2 6V4a4 4 0 1 1 8 0v2h1v8H1V6h1zm1.5 0h5V4a2.5 2.5 0 0 0-5 0v2z" fill="currentColor"/></svg>';
-const LABEL = { F: 'Your food order', S: 'Who you are and what you need', M: 'Your shopping', P: 'Your bill' };
-const DEP_HINT = { restaurant: 'Choose a restaurant to see its menu.', mall: 'Choose a mall to see its stores.', store: 'Choose a store to see its products.' };
-const money = n => '€' + n.toFixed(2);
+const SECTIONS = [
+  { key: 'food', n: '01', title: 'Food', note: 'Order ahead — we ring you when it’s ready' },
+  { key: 'malls', id: 'shopping', n: '02', title: 'Shopping', note: 'Pick a mall, then a store' },
+  { key: 'payments', n: '03', title: 'Payments', note: 'Pay a bill at the desk' },
+  { key: 'services', n: '04', title: 'Services', note: 'Get help at a counter' },
+];
 
 const existing = storage('ql_token');
 if (existing) api('/api/tickets/' + existing).then(t => {
@@ -142,236 +61,30 @@ if (existing) api('/api/tickets/' + existing).then(t => {
   }
 }).catch(() => storage('ql_token', null));
 
-const schema = () => FORMS[services.find(s => s.id === current).code] || [];
-const depKey = f => (f.depends || []).map(d => values[d] || '').join('|');
-const depsMissing = f => (f.depends || []).find(d => !values[d]);
-const optionsFor = f => f.options_by ? (f.options_by[depKey(f)] || []) : f.options;
+const tile = it => `
+  <a class="dir-tile" href="${esc(it.path)}">
+    <span class="dir-logo" ${it.bg ? `style="background:${esc(it.bg)}"` : ''}>${it.logo ? `<img src="${esc(it.logo)}" alt="">` : `<span class="glyph">${esc(it.name[0])}</span>`}</span>
+    <span><div class="dir-name">${esc(it.name)}</div><div class="dir-sub">${esc(it.sub || '')}</div><span class="dir-go">Open <span class="arrow">→</span></span></span>
+    <span class="dir-qr" title="Scan to open on your phone"><img src="/api/link-qr.svg?to=${encodeURIComponent(it.path)}" alt="QR code for ${esc(it.name)}" loading="lazy"></span>
+  </a>`;
 
-function tile(f, o) {
-  return `<label class="logo-opt">
-    <input type="radio" name="${f.key}" value="${esc(o.value)}" ${values[f.key] === o.value ? 'checked' : ''}>
-    <span class="logo-tile"><span class="logo-img" ${o.bg ? `style="background:${esc(o.bg)}"` : ''}><img src="${esc(o.logo)}" alt=""></span>
-    <span class="logo-nm">${esc(o.value)}</span>${o.sub ? `<span class="logo-sub">${esc(o.sub)}</span>` : ''}</span>
-  </label>`;
-}
-
-function cartHTML(f) {
-  const items = f.catalog[depKey(f)] || [];
-  const cart = carts[depKey(f)] || {};
-  const owner = f.depends[f.depends.length - 1];
-  const ownerField = schema().find(x => x.key === owner);
-  const ownerOpt = ownerField && optionsFor(ownerField).find(o => o.value === values[owner]);
-  let html = ownerOpt ? `<div class="menu-head"><img src="${esc(ownerOpt.logo)}" alt="" ${ownerOpt.bg ? `style="background:${esc(ownerOpt.bg)}"` : ''}><div><b>${esc(ownerOpt.value)}</b><div class="small muted">${items.length} items${f.key === 'basket' ? ' · sample prices' : ''}</div></div></div>` : '';
-  let section = null;
-  for (const it of items) {
-    if (it.section !== section) { section = it.section; html += `<div class="menu-sec">${esc(section)}</div>`; }
-    const q = cart[it.id] || 0;
-    html += `<div class="mi ${q ? 'on' : ''}" data-id="${esc(it.id)}">
-      <div><div class="mi-n">${esc(it.name)}</div>${it.desc ? `<div class="mi-d">${esc(it.desc)}</div>` : ''}</div>
-      <div class="mi-p">€${esc(it.price)}</div>
-      <div class="qty ${q ? '' : 'zero'}"><button type="button" class="dec" aria-label="Remove one ${esc(it.name)}">−</button><span>${q}</span><button type="button" class="inc" aria-label="Add ${esc(it.name)}">+</button></div>
-    </div>`;
-  }
-  return `<div class="menu">${html}</div><input type="hidden" name="${f.key}" value='${esc(JSON.stringify(cart))}'>`;
-}
-
-function fieldHTML(f) {
-  const id = 'f_' + f.key, v = esc(values[f.key] || '');
-  const cls = `field${f.width === 'half' ? ' half' : ''}`;
-  const tail = `${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ''}<div class="err" id="e_${f.key}"></div>`;
-  const missing = depsMissing(f);
-  if (f.type === 'choice' || f.type === 'cart') {
-    let body;
-    if (missing) body = `<div class="dep-empty">${DEP_HINT[missing] || 'Choose above first.'}</div>`;
-    else if (f.type === 'choice') body = `<div class="logo-grid" role="radiogroup" aria-labelledby="${id}">${optionsFor(f).map(o => tile(f, o)).join('')}</div>`;
-    else body = cartHTML(f);
-    return `<div class="${cls}" data-key="${f.key}"><span class="eyebrow" id="${id}">${esc(f.label)}</span>${body}${tail}</div>`;
-  }
-  const label = `<label class="eyebrow" for="${id}">${esc(f.label)}</label>`;
-  let control;
-  switch (f.type) {
-    case 'select':
-      control = `<select id="${id}" name="${f.key}"><option value="">Choose…</option>${f.options.map(o => `<option ${values[f.key] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`; break;
-    case 'textarea':
-      control = `<textarea id="${id}" name="${f.key}" maxlength="${f.maxlength || 500}" placeholder="${esc(f.placeholder || '')}">${v}</textarea>`; break;
-    case 'money':
-      control = `<div class="money"><span>€</span><input type="text" id="${id}" name="${f.key}" inputmode="decimal" placeholder="0.00" value="${v}"></div>`; break;
-    case 'cardnumber':
-      control = `<input type="text" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23" value="${v}">`; break;
-    case 'cvv':
-      control = `<input type="password" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-csc" placeholder="•••" maxlength="4" pattern="[0-9]*"
-        style="width:100%;font:400 17px var(--sans);background:transparent;border:0;border-bottom:1.5px solid var(--ink);padding:10px 0;border-radius:0;color:var(--ink);letter-spacing:.2em">`; break;
-    case 'expiry':
-      control = `<input type="text" id="${id}" name="${f.key}" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" value="${v}">`; break;
-    default:
-      control = `<input type="text" id="${id}" name="${f.key}" value="${v}" maxlength="${f.maxlength || 60}" placeholder="${esc(f.placeholder || '')}" ${f.autocomplete ? `autocomplete="${f.autocomplete}"` : ''}>`;
-  }
-  return `<div class="${cls}" data-key="${f.key}">${label}${control}${tail}</div>`;
-}
-
-function renderFields() {
-  const svc = services.find(s => s.id === current);
-  const fields = schema();
-  for (const f of fields) if (f.type === 'choice' && values[f.key] && !depsMissing(f) && !optionsFor(f).some(o => o.value === values[f.key])) delete values[f.key];
-  $('#detailsLabel').textContent = LABEL[svc.code] || 'Your details';
-  const card = fields.filter(f => f.group === 'card');
-  const html = fields.filter(f => f.group !== 'card').map(fieldHTML);
-  if (card.length) html.push(`<div class="card-box"><div class="card-head"><span class="eyebrow">Pay by card</span><span class="brand" id="brand"></span></div>
-      ${card.map(fieldHTML).join('')}
-      <div class="lock">${LOCK}<span>Checked on the spot, then discarded. We keep only the brand and last four digits — never the full number or the CVV.</span></div></div>`);
-  $('#fields').innerHTML = html.join('');
-  wire();
-  updateSummary();
-}
-
-function wire() {
-  const fields = schema();
-  const parents = new Set(fields.flatMap(f => f.depends || []));
-  $('#fields').querySelectorAll('input:not([type=hidden]), select, textarea').forEach(el => {
-    const ev = el.type === 'radio' ? 'change' : 'input';
-    el.addEventListener(ev, () => {
-      clearErr(el.name);
-      if (el.name !== 'card_cvv') values[el.name] = el.value;
-      if (parents.has(el.name)) { renderFields(); document.querySelector(`.field[data-key="${el.name}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
-    });
-  });
-  $('#fields').querySelectorAll('.mi').forEach(row => {
-    const f = fields.find(x => x.type === 'cart');
-    const key = depKey(f);
-    const change = d => {
-      const cart = carts[key] = carts[key] || {};
-      const q = Math.max(0, Math.min(20, (cart[row.dataset.id] || 0) + d));
-      if (q) cart[row.dataset.id] = q; else delete cart[row.dataset.id];
-      row.classList.toggle('on', !!q);
-      row.querySelector('.qty').classList.toggle('zero', !q);
-      row.querySelector('.qty span').textContent = q;
-      document.querySelector(`input[name="${f.key}"]`).value = JSON.stringify(cart);
-      clearErr(f.key);
-      updateSummary();
-    };
-    row.querySelector('.inc').onclick = () => change(1);
-    row.querySelector('.dec').onclick = () => change(-1);
-  });
-  const cn = $('#f_card_number');
-  if (cn) {
-    const fmt = () => {
-      const d = cn.value.replace(/\D/g, '').slice(0, 19);
-      cn.value = d.replace(/(.{4})/g, '$1 ').trim();
-      values.card_number = cn.value;
-      $('#brand').textContent = d.startsWith('4') ? 'Visa' : /^(5[1-5]|2[2-7])/.test(d) ? 'Mastercard' : /^3[47]/.test(d) ? 'Amex' : '';
-    };
-    cn.addEventListener('input', fmt); fmt();
-  }
-  const ex = $('#f_card_expiry');
-  if (ex) ex.addEventListener('input', e => {
-    let d = ex.value.replace(/\D/g, '').slice(0, 4);
-    if (d.length >= 3 || (d.length === 2 && e.inputType !== 'deleteContentBackward')) d = d.slice(0, 2) + '/' + d.slice(2);
-    ex.value = values.card_expiry = d;
-  });
-}
-
-function updateSummary() {
-  const f = schema().find(x => x.type === 'cart');
-  if (!f || depsMissing(f)) { $('#sum').hidden = true; $('#goLabel').textContent = f ? 'Check out' : 'Take a number'; return; }
-  const items = f.catalog[depKey(f)] || [], cart = carts[depKey(f)] || {};
-  let n = 0, total = 0;
-  for (const it of items) if (cart[it.id]) { n += cart[it.id]; total += cart[it.id] * +it.price; }
-  $('#sum').hidden = !n;
-  $('#sumItems').textContent = `${n} item${n === 1 ? '' : 's'} · ${esc(values[f.depends[f.depends.length - 1]] || '')}`;
-  $('#sumTotal').textContent = money(total);
-  $('#goLabel').textContent = n ? `Check out · ${money(total)}` : 'Check out';
-}
-
-function clearErr(key) {
-  const f = document.querySelector(`.field[data-key="${key}"]`);
-  if (f) { f.classList.remove('invalid'); f.querySelector('.err').textContent = ''; }
-}
-function showErrors(errs) {
-  let first = null;
-  for (const [k, msg] of Object.entries(errs)) {
-    const f = document.querySelector(`.field[data-key="${k}"]`);
-    if (!f) continue;
-    f.classList.add('invalid'); f.querySelector('.err').textContent = msg;
-    first = first || f;
-  }
-  if (first) { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); first.querySelector('input:not([type=hidden]),select,textarea')?.focus({ preventScroll: true }); }
-}
-
-function luhn(d) {
-  let s = 0;
-  [...d].reverse().forEach((c, i) => { let n = +c; if (i % 2) { n *= 2; if (n > 9) n -= 9; } s += n; });
-  return d.length >= 12 && s % 10 === 0;
-}
-
-async function init() {
-  FORMS = await api('/api/forms');
-  await refresh();
-}
-
+let built = false;
 async function refresh() {
-  const s = await api('/api/queue');
-  $('#wait').textContent = s.next_wait ? fmtRange(s.next_wait.low_s, s.next_wait.high_s) : 'Paused';
-  $('#count').textContent = s.waiting.length === 1 ? '1 person' : `${s.waiting.length} people`;
-  const box = $('#services');
-  if (!box.children.length && Object.keys(FORMS).length) {
-    services = s.services;
-    current = services[0].id;
-    box.innerHTML = services.map((sv, i) => `
-      <label class="svc">
-        <input type="radio" name="svc" value="${sv.id}" ${i === 0 ? 'checked' : ''}>
-        <div class="svc-row">
-          <span class="code">${esc(sv.code)}</span>
-          <span><div class="nm">${esc(sv.name)}</div><div class="ds">${esc(sv.description || '')}</div></span>
-          <span class="tm">≈${+sv.default_minutes.toFixed(1)} min<br><span class="muted">at desk</span></span>
-        </div>
-      </label>`).join('');
-    box.querySelectorAll('input[name=svc]').forEach(r => r.onchange = () => { current = +r.value; renderFields(); });
-    renderFields();
-  }
+  const d = await api('/api/directory');
+  $('#wait').textContent = d.queue.next_wait ? fmtRange(d.queue.next_wait.low_s, d.queue.next_wait.high_s) : 'Paused';
+  $('#count').textContent = d.queue.waiting;
+  if (built) return;
+  built = true;
+  $('#sections').innerHTML = SECTIONS.map(s => `
+    <section class="dir-sec" id="${s.id || s.key}">
+      <div class="dir-sec-h"><h2><span class="n">${s.n}</span>${s.title}</h2><span class="eyebrow">${s.note}</span></div>
+      <div class="dir-grid">${d[s.key].map(tile).join('')}</div>
+    </section>`).join('');
 }
-
-async function best() {
-  const b = await api('/api/best-times');
-  if (!b.length) return;
-  $('#bestCard').hidden = false;
-  $('#best').innerHTML = b.map(x => `<tr><td class="tno">${x.hour}</td><td class="m r muted">usually ${x.avg} arrivals an hour</td></tr>`).join('');
-}
-
-$('#f').onsubmit = async e => {
-  e.preventDefault();
-  const details = {}, local = {};
-  for (const f of schema()) {
-    if (f.type === 'choice') details[f.key] = values[f.key] || '';
-    else if (f.type === 'cart') details[f.key] = depsMissing(f) ? '' : JSON.stringify(carts[depKey(f)] || {});
-    else details[f.key] = (document.querySelector(`[name="${f.key}"]`)?.value || '').trim();
-    const v = details[f.key];
-    if (!v || v === '{}') {
-      if (f.type === 'cart' && depsMissing(f)) continue;
-      local[f.key] = f.type === 'cart' ? 'Add at least one item' : f.type === 'choice' ? 'Choose one' : 'Required';
-    }
-  }
-  if (details.card_number && !luhn(details.card_number.replace(/\D/g, ''))) local.card_number = "That card number isn't valid";
-  if ('card_cvv' in details) {
-    const need = /^3[47]/.test(details.card_number.replace(/\D/g, '')) ? 4 : 3;
-    if (!new RegExp(`^\\d{${need}}$`).test(details.card_cvv)) local.card_cvv = `Enter the ${need}-digit code on your card`;
-  }
-  if (Object.keys(local).length) return showErrors(local);
-
-  $('#go').disabled = true;
-  try {
-    const t = await post('/api/tickets', { service_id: current, details, priority: $('#prio').checked });
-    storage('ql_token', t.token);
-    location.href = '/t/' + t.token;
-  } catch (err) {
-    if (err.fields) showErrors(err.fields); else toast(err.message, true);
-    $('#go').disabled = false;
-  }
-};
 
 let pending;
-connectWS(() => { clearTimeout(pending); pending = setTimeout(refresh, 150); }, liveStatus($('#live')));
-init();
-best();
+connectWS(msg => { if (msg.type === 'orders') return; clearTimeout(pending); pending = setTimeout(refresh, 200); });
+refresh();
 </script>
 </body>
 </html>

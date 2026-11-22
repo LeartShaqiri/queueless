@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>For businesses — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .top { padding: 36px 0 10px; }
+  .top h1 { font-size: clamp(40px, 6vw, 64px); }
+  .row-b { display: grid; grid-template-columns: 64px 1fr auto; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .row-b .dir-logo { width: 64px; height: 64px; padding: 6px; }
+  .row-b b { font-family: var(--display); font-stretch: 85%; font-size: 22px; }
+</style>
+</head>
+<body>
+<div class="wrap narrow" style="max-width:760px">
+  <header class="bar"><a class="logo" href="/" data-logo>QueueLess <span class="sub">For businesses</span></a></header>
+  <section class="top">
+    <div class="eyebrow">Business sign-in</div>
+    <h1 class="display" style="margin-top:8px">Open your order screen</h1>
+    <p class="muted" style="margin-top:10px">Choose your business and sign in with your staff PIN. From your screen you accept orders, ring customers, manage your counters and generate your door QR code.</p>
+  </section>
+  <div id="list" style="border-top:1.5px solid var(--ink);margin-top:20px"></div>
+  <div style="height:56px"></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+api('/api/businesses').then(list => {
+  $('#list').innerHTML = list.map(b => `<div class="row-b">
+    <span class="dir-logo"><img src="${esc(b.logo)}" alt=""></span>
+    <div><b>${esc(b.name)}</b><div class="small muted">${esc(b.place ? b.place + ' · ' + b.sub : b.sub)}</div></div>
+    <a class="btn solid sm" href="/biz/${esc(b.slug)}">Sign in <span class="arrow">→</span></a></div>`).join('');
+});
+</script>
+</body>
+</html>

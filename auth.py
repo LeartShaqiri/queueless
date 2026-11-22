@@ -24,6 +24,7 @@ def _load_env_file(path: Path) -> dict:
 _file = _load_env_file(Path(__file__).parent / "admin.env")
 ADMIN_USER = os.environ.get("QL_ADMIN_USER") or _file.get("QL_ADMIN_USER", "")
 ADMIN_PASS = os.environ.get("QL_ADMIN_PASS") or _file.get("QL_ADMIN_PASS", "")
+DEMO_PIN = os.environ.get("QL_DEMO_PIN") or _file.get("QL_DEMO_PIN", "")
 if not (ADMIN_USER and ADMIN_PASS):
     print("  ! Admin sign-in is disabled: copy admin.env.example to admin.env and set a username and password.")
 COOKIE = "ql_admin"

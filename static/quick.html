@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFE7">
+<title>Take a number — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .hero { padding: 28px 0 22px; border-bottom: 1.5px solid var(--ink); margin-bottom: 26px; }
+  .hero h1 { font-size: 44px; }
+  .hero .dir-logo { width: 84px; height: 84px; }
+  .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 18px; }
+  .fgrid .full { grid-column: 1 / -1; }
+  .money { position: relative; }
+  .money span { position: absolute; left: 0; bottom: 11px; font-size: 17px; color: var(--ink-2); }
+  .money input { padding-left: 16px; }
+  .back { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; text-decoration: none; color: var(--ink-2); }
+  .back:hover { color: var(--signal); }
+  .strip { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-bottom: 24px; }
+  .strip > div { padding: 12px 0; }
+  .strip > div + div { padding-left: 18px; border-left: 1px solid var(--rule); }
+  .strip b { display: block; font-family: var(--display); font-stretch: 75%; font-weight: 800; font-size: 26px; margin-top: 2px; }
+  @media (max-width: 380px) { .fgrid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <header class="bar">
+    <a class="logo" href="/" data-logo>QueueLess</a>
+    <a class="back" id="back" href="/join">← All places</a>
+  </header>
+  <section class="hero" id="hero"><div class="eyebrow">Loading…</div></section>
+
+  <div class="strip">
+    <div><span class="eyebrow">Queue wait</span><b id="wait">—</b></div>
+    <div><span class="eyebrow">In line</span><b id="count">—</b></div>
+  </div>
+
+  <form id="f" novalidate hidden>
+    <div class="fgrid">
+      <div class="field" data-key="first_name"><label class="eyebrow" for="fn">First name</label><input type="text" id="fn" autocomplete="given-name" maxlength="40"><div class="err"></div></div>
+      <div class="field" data-key="last_name"><label class="eyebrow" for="ln">Last name</label><input type="text" id="ln" autocomplete="family-name" maxlength="40"><div class="err"></div></div>
+      <div class="field" data-key="reference" data-pay><label class="eyebrow" for="ref">Customer or bill no.</label><input type="text" id="ref" maxlength="30" placeholder="Printed on your bill"><div class="err"></div></div>
+      <div class="field" data-key="amount" data-pay><label class="eyebrow" for="amt">Amount</label><div class="money"><span>€</span><input type="text" id="amt" inputmode="decimal" placeholder="0.00"></div><div class="err"></div></div>
+    </div>
+    <label class="check" style="margin-top:24px"><input type="checkbox" id="prio">
+      <span>I need priority assistance — for example due to age, pregnancy or a disability.</span></label>
+    <button class="btn solid block" id="go" type="submit" style="margin-top:26px">Take a number <span class="arrow">→</span></button>
+    <p class="small muted" style="margin-top:12px">You'll get a ticket number and can step away. We'll buzz your phone when it's nearly your turn.</p>
+  </form>
+  <div style="height:56px"></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const [, kind, slug] = location.pathname.split('/');
+let info = null;
+
+function clearErr(k) { const f = document.querySelector(`.field[data-key="${k}"]`); if (f) { f.classList.remove('invalid'); f.querySelector('.err').textContent = ''; } }
+function showErrors(errs) {
+  let first = null;
+  for (const [k, msg] of Object.entries(errs)) {
+    const f = document.querySelector(`.field[data-key="${k}"]`);
+    if (!f) { toast(msg, true); continue; }
+    f.classList.add('invalid'); f.querySelector('.err').textContent = msg; first = first || f;
+  }
+  first?.querySelector('input')?.focus();
+}
+document.querySelectorAll('.field input').forEach(i => i.oninput = () => clearErr(i.closest('.field').dataset.key));
+
+api(`/api/quick/${kind}/${slug}`).then(d => {
+  info = d;
+  document.title = `${d.name} — take a number`;
+  $('#back').href = '/join#' + (d.kind === 'pay' ? 'payments' : 'services');
+  $('#hero').innerHTML = `<div class="biz-head"><span class="dir-logo" ${d.bg ? `style="background:${esc(d.bg)}"` : ''}>${d.logo ? `<img src="${esc(d.logo)}" alt="">` : `<span class="glyph">${esc(d.name[0])}</span>`}</span>
+    <div><div class="eyebrow">${d.kind === 'pay' ? 'Payments' : 'Services'}</div><h1 class="display" style="margin-top:6px">${esc(d.name)}</h1><div class="muted" style="margin-top:4px">${esc(d.sub)}</div></div></div>`;
+  document.querySelectorAll('[data-pay]').forEach(el => el.hidden = d.kind !== 'pay');
+  $('#f').hidden = false;
+  $('#fn').focus();
+}).catch(() => { $('#hero').innerHTML = '<h1 class="display">Not found</h1><p class="muted" style="margin-top:8px"><a href="/join">See all places</a></p>'; });
+
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const details = { first_name: $('#fn').value.trim(), last_name: $('#ln').value.trim(), ...info.preset };
+  if (info.kind === 'pay') Object.assign(details, { reference: $('#ref').value.trim(), amount: $('#amt').value.trim() });
+  const local = {};
+  for (const k of ['first_name', 'last_name', ...(info.kind === 'pay' ? ['reference', 'amount'] : [])]) if (!details[k]) local[k] = 'Required';
+  if (Object.keys(local).length) return showErrors(local);
+  $('#go').disabled = true;
+  try {
+    const t = await post('/api/tickets', { service_id: info.service_id, details, priority: $('#prio').checked });
+    storage('ql_token', t.token);
+    location.href = '/t/' + t.token;
+  } catch (err) {
+    if (err.fields) showErrors(err.fields); else toast(err.message, true);
+    $('#go').disabled = false;
+  }
+};
+
+async function stats() {
+  const s = await api('/api/queue');
+  $('#wait').textContent = s.next_wait ? fmtRange(s.next_wait.low_s, s.next_wait.high_s) : 'Paused';
+  $('#count').textContent = s.waiting.length;
+}
+let pending;
+connectWS(msg => { if (msg.type === 'orders') return; clearTimeout(pending); pending = setTimeout(stats, 200); });
+</script>
+</body>
+</html>

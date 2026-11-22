@@ -87,7 +87,8 @@ if (prev) api('/api/orders/' + prev).then(o => {
 
 function renderHero() {
   document.title = `${biz.name} — order`;
-  $('#hero').innerHTML = `<div class="biz-head"><span class="biz-mark"><img src="${esc(biz.logo)}" alt=""></span>
+  const backHref = biz.place ? '/m/' + biz.place.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '/join#food';
+  $('#hero').innerHTML = `<a href="${backHref}" class="eyebrow" style="text-decoration:none;display:inline-block;margin-bottom:14px">← ${esc(biz.place || 'All places')}</a><div class="biz-head"><span class="biz-mark"><img src="${esc(biz.logo)}" alt=""></span>
     <div><div class="eyebrow">${esc(biz.place || biz.sub)}${biz.place ? ' · ' + esc(biz.sub) : ''}</div><h1 class="display" style="margin-top:6px">${esc(biz.name)}</h1>
     <span class="tag dot ${biz.is_open ? 'go' : 'stop'}" style="margin-top:8px">${biz.is_open ? 'Taking orders' : 'Closed'}</span></div></div>`;
   $('#closed').hidden = biz.is_open;

@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run QueueLess",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": ["run.py"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PORT": "8000" } },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "group": { "kind": "build", "isDefault": true },
+      "runOptions": { "runOn": "folderOpen" }
+    }
+  ]
+}

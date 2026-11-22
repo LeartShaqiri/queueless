@@ -16,8 +16,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import re
+
 import analytics
 import auth
+import catalog
 import core
 import forms
 import orders
@@ -75,6 +78,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="QueueLess", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def no_stale_pages(request: Request, call_next):
+    """Make browsers re-check pages and assets every time, so updates show up immediately."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -143,6 +155,95 @@ async def stickers_page():
 @app.get("/biz/{slug}/sticker", include_in_schema=False)
 async def biz_sticker_page(slug: str):
     return FileResponse(STATIC / "stickers.html")
+
+
+@app.get("/m/{slug}", include_in_schema=False)
+async def mall_page(slug: str):
+    return FileResponse(STATIC / "mall.html")
+
+
+@app.get("/pay/{slug}", include_in_schema=False)
+async def pay_page(slug: str):
+    return FileResponse(STATIC / "quick.html")
+
+
+@app.get("/service/{slug}", include_in_schema=False)
+async def service_page(slug: str):
+    return FileResponse(STATIC / "quick.html")
+
+
+@app.get("/business", include_in_schema=False)
+async def business_list_page():
+    return FileResponse(STATIC / "business.html")
+
+
+# ---------- directory (Take a number) ----------
+
+MALL_SLUGS = {orders._slug(m): m for m in forms.MALLS}
+BILLER_SLUGS = {orders._slug(b["value"]): b for b in catalog.BILLERS}
+SERVICE_SLUGS = {orders._slug(s): s for s in forms.SERVICE_TYPES}
+SERVICE_NOTES = {
+    "Customer support": "Questions, complaints and general help",
+    "Repairs & warranty": "Bring in a faulty product",
+    "Returns & exchanges": "Return or swap something you bought",
+    "Contracts & accounts": "Sign up, change or cancel a contract",
+    "Other": "Anything else — staff will help",
+}
+LINK_RE = re.compile(r"^/(b|m|pay|service)/[a-z0-9-]{1,60}$")
+
+
+def _biz_card(b):
+    return {"slug": b["slug"], "name": b["name"], "logo": b["logo"], "sub": b["sub"], "path": f"/b/{b['slug']}"}
+
+
+@app.get("/api/directory")
+async def directory():
+    snap = core.snapshot()
+    return {
+        "food": [_biz_card(b) for b in orders.BUSINESSES.values() if b["kind"] == "food"],
+        "malls": [{"slug": s, "name": m, "logo": forms.MALL_LOGOS[m], "path": f"/m/{s}",
+                   "sub": f"{len(catalog.STORES[m])} store{'s' if len(catalog.STORES[m]) != 1 else ''}"}
+                  for s, m in MALL_SLUGS.items()],
+        "payments": [{"slug": s, "name": b["value"], "logo": b["logo"], "bg": b.get("bg"), "sub": b["type"], "path": f"/pay/{s}"}
+                     for s, b in BILLER_SLUGS.items()],
+        "services": [{"slug": s, "name": n, "sub": SERVICE_NOTES.get(n, ""), "path": f"/service/{s}"} for s, n in SERVICE_SLUGS.items()],
+        "queue": {"waiting": len(snap["waiting"]), "next_wait": snap["next_wait"]},
+    }
+
+
+@app.get("/api/malls/{slug}")
+async def mall_info(slug: str):
+    m = MALL_SLUGS.get(slug)
+    if not m:
+        raise HTTPException(404, "Mall not found")
+    stores = [_biz_card(b) for b in orders.BUSINESSES.values() if b["place"] == m]
+    return {"slug": slug, "name": m, "logo": forms.MALL_LOGOS[m], "stores": stores}
+
+
+@app.get("/api/quick/{kind}/{slug}")
+async def quick_info(kind: str, slug: str):
+    svc = {s["code"]: s for s in core.services()}
+    if kind == "pay" and slug in BILLER_SLUGS:
+        b = BILLER_SLUGS[slug]
+        return {"kind": "pay", "name": b["value"], "logo": b["logo"], "bg": b.get("bg"), "sub": f"{b['type']} bill",
+                "service_id": svc["P"]["id"], "preset": {"biller": b["value"]}}
+    if kind == "service" and slug in SERVICE_SLUGS:
+        n = SERVICE_SLUGS[slug]
+        return {"kind": "service", "name": n, "logo": None, "sub": SERVICE_NOTES.get(n, ""),
+                "service_id": svc["S"]["id"], "preset": {"service": n}}
+    raise HTTPException(404, "Not found")
+
+
+@app.get("/api/link-qr.svg")
+async def link_qr(to: str):
+    if not LINK_RE.match(to):
+        raise HTTPException(400, "Unsupported link")
+    return qr_response(base_url() + to)
+
+
+@app.get("/api/businesses")
+async def business_directory():
+    return [{**_biz_card(b), "place": b["place"]} for b in orders.BUSINESSES.values()]
 
 
 @app.get("/s/{code}", include_in_schema=False)

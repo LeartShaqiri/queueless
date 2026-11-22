@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#F2EFE7">
+<title>Mall — QueueLess</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .hero { display: flex; gap: 20px; align-items: center; padding: 30px 0 8px; }
+  .hero .dir-logo { width: 120px; height: 120px; }
+  .hero h1 { font-size: clamp(40px, 6vw, 64px); }
+  .back { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; text-decoration: none; color: var(--ink-2); }
+  .back:hover { color: var(--signal); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <a class="logo" href="/" data-logo>QueueLess</a>
+    <a class="back" href="/join#shopping">← All places</a>
+  </header>
+  <section class="hero" id="hero"><div class="eyebrow">Loading…</div></section>
+  <section class="dir-sec">
+    <div class="dir-sec-h"><h2>Stores</h2><span class="eyebrow">Tap a store or scan its code to shop and pay</span></div>
+    <div class="dir-grid" id="stores"></div>
+  </section>
+  <div style="height:64px"></div>
+</div>
+<script src="/static/common.js"></script>
+<script>
+const slug = location.pathname.split('/').pop();
+const tile = it => `
+  <a class="dir-tile" href="${esc(it.path)}">
+    <span class="dir-logo"><img src="${esc(it.logo)}" alt=""></span>
+    <span><div class="dir-name">${esc(it.name)}</div><div class="dir-sub">${esc(it.sub || '')}</div><span class="dir-go">Shop <span class="arrow">→</span></span></span>
+    <span class="dir-qr" title="Scan to open on your phone"><img src="/api/link-qr.svg?to=${encodeURIComponent(it.path)}" alt="QR code for ${esc(it.name)}" loading="lazy"></span>
+  </a>`;
+api('/api/malls/' + slug).then(m => {
+  document.title = `${m.name} — QueueLess`;
+  $('#hero').innerHTML = `<span class="dir-logo"><img src="${esc(m.logo)}" alt=""></span>
+    <div><div class="eyebrow">Shopping</div><h1 class="display" style="margin-top:6px">${esc(m.name)}</h1>
+    <div class="muted" style="margin-top:6px">${m.stores.length} store${m.stores.length === 1 ? '' : 's'} taking orders through QueueLess</div></div>`;
+  $('#stores').innerHTML = m.stores.map(tile).join('');
+}).catch(() => { $('#hero').innerHTML = '<h1 class="display">Mall not found</h1>'; });
+</script>
+</body>
+</html>
